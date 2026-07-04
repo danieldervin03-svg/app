@@ -8,6 +8,7 @@ import { LinearGradient } from "expo-linear-gradient";
 
 import { colors, font, radius, spacing } from "@/src/theme";
 import { Card } from "@/src/components/ui";
+import { CoachChat } from "@/src/components/coach-chat";
 import { api, TodaySummary } from "@/src/api";
 import { useAuth } from "@/src/auth";
 
@@ -16,6 +17,7 @@ export default function HomeScreen() {
   const { user } = useAuth();
   const [summary, setSummary] = useState<TodaySummary | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [coachOpen, setCoachOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -119,8 +121,18 @@ export default function HomeScreen() {
             <Ionicons name="restaurant-outline" size={18} color={colors.brandPrimary} />
             <Text style={styles.quickTxt}>Logger un repas</Text>
           </Pressable>
+          <Pressable
+            style={styles.quickBtn}
+            onPress={() => setCoachOpen(true)}
+            testID="home-quick-coach"
+          >
+            <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.brandPrimary} />
+            <Text style={styles.quickTxt}>Parler au Coach IA</Text>
+          </Pressable>
         </View>
       </ScrollView>
+
+      <CoachChat visible={coachOpen} onClose={() => setCoachOpen(false)} />
     </SafeAreaView>
   );
 }

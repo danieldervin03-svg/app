@@ -108,6 +108,23 @@ export type MealSuggestion = {
   description: string;
 };
 
+export type HistoryStats = {
+  total_completed: number;
+  current_streak_weeks: number;
+  best_streak_weeks: number;
+  weekly: { week: string; count: number; label: string }[];
+  recent: Workout[];
+};
+
+export type CoachMessage = {
+  id: string;
+  user_id: string;
+  workout_id: string | null;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+};
+
 // ============ Auth ============
 export const api = {
   register: (body: { email: string; password: string; name: string }) =>
@@ -157,4 +174,18 @@ export const api = {
 
   // Summary
   summaryToday: () => request<TodaySummary>("/summary/today"),
+
+  // History & Stats
+  historyStats: () => request<HistoryStats>("/workouts/history/stats"),
+
+  // Coach
+  coachMessages: (workoutId?: string) =>
+    request<CoachMessage[]>(`/coach/messages${workoutId ? `?workout_id=${workoutId}` : ""}`),
+  coachChat: (message: string, workoutId?: string) =>
+    request<CoachMessage>("/coach/chat", {
+      method: "POST",
+      body: { message, workout_id: workoutId ?? null },
+    }),
+  coachClear: (workoutId?: string) =>
+    request<{ ok: boolean }>(`/coach/messages${workoutId ? `?workout_id=${workoutId}` : ""}`, { method: "DELETE" }),
 };

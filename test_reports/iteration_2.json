@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration 2 validation: backend pytest suite extended from 18 → 23 tests (added 5 new tests for GET /api/workouts/history/stats and POST/GET/DELETE /api/coach/*). 23/23 passing. Frontend Playwright smoke on mobile viewport (390x844): Home 'Parler au Coach IA' quick action opens chat modal → optimistic user bubble → AI reply in French (« Oui : dors 7 à 9 h si possible, hydrate-toi bien… »). Workout detail shows 'Marquer terminé' + 'Coach IA' buttons side-by-side; scoped Coach modal opens correctly (testID workout-coach-open). Progress tab renders the new Stats card (Terminées 0 / Streak sem. 0 / Meilleur 0) + 8-week bar chart with correct week labels (16/05 → 04/07) + 'Historique récent' section is conditionally hidden when recent=[] (seed user has no completed workouts in the last 8 weeks — expected). All regression endpoints still green (auth/workouts CRUD + generate/meals CRUD + suggest/measurements/summary).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/auth/me without token", "issue": "Still returns 403 (HTTPBearer) instead of 401 — carried over from iteration 1, not a blocker."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Coach modal (small viewports 375x667)", "issues": ["On the smaller iPhone SE viewport (375×667), the coach send button and text input can render below the keyboard/viewport edge when the modal is presentationStyle=pageSheet on web. Works fine on 390×844+. Consider using presentationStyle='fullScreen' on web or ensuring the KeyboardAvoidingView keyboardVerticalOffset accommodates small screens."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(Optional/LOW) Verify Coach chat modal input remains visible on 375×667 viewport — currently the send button was outside viewport on iPhone SE size; works fine on 390×844.",
+    "(Optional/LOW) Carried from iter 1: add testIDs to bottom tabs, replace deprecated shadow*/pointerEvents style props, return 401 instead of 403 on missing Bearer."
+  ],
+  "critical_code_review_comments": [
+    "server.py grew to 723 lines; still monolithic but organized in clean sections. Consider splitting when it grows further.",
+    "coach_chat correctly persists user msg BEFORE calling LLM (so history query includes it) and reverses it out via hist_docs[:-1] — good.",
+    "History stats computes ISO-week keys consistently and streak logic is straightforward. current_streak counts from most-recent week backwards; if the current week has 0 sessions, streak=0 even if last week had activity — expected semantic.",
+    "coach_messages query uses workout_id=None for general scope — correctly separates scopes on both list and delete endpoints.",
+    "All Mongo docs still projection-exclude _id — good."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py"],
+  "success_rate": {"backend": "100% (23/23)", "frontend": "100% smoke on new features (home coach quick action, workout coach button, progress stats card+8-week chart)"},
+  "seed_data_creation": "Ephemeral TEST_ workouts + coach messages created and cleaned up in each test class. Seed user test@bp.com used as documented.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "NEW testIDs added in iteration 2: home-quick-coach (Home), workout-coach-open (workout detail), coach-chat / coach-close / coach-clear / coach-input / coach-send / coach-msg-user / coach-msg-assistant (coach modal), history-workout-<id> (progress recent list). Backend: /api/workouts/history/stats (auth), /api/coach/chat POST, /api/coach/messages GET/DELETE with optional ?workout_id=. LLM = openai/gpt-5.4 via Emergent LLM key (reply latency ~5-30s). On viewport 375×667 the coach modal's send button was offscreen — use 390×844 or scrollIntoView for reliable clicks in Playwright."
+}

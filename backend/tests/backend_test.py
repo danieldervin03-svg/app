@@ -220,3 +220,98 @@ class TestSummary:
             assert k in data
         assert isinstance(data["calorie_goal"], int)
         assert data["calories_remaining"] == data["calorie_goal"] - data["calories_consumed"]
+
+
+
+# ---------------- History & Stats (NEW iteration 2) ----------------
+class TestHistoryStats:
+    def test_history_stats_shape(self, s, auth):
+        r = s.get(f"{API}/workouts/history/stats", headers=auth, timeout=15)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        for k in ["total_completed", "current_streak_weeks", "best_streak_weeks", "weekly", "recent"]:
+            assert k in d, f"missing key {k}"
+        assert isinstance(d["total_completed"], int)
+        assert isinstance(d["current_streak_weeks"], int)
+        assert isinstance(d["best_streak_weeks"], int)
+        assert isinstance(d["weekly"], list) and len(d["weekly"]) == 8, f"expected 8 weeks, got {len(d['weekly'])}"
+        for w in d["weekly"]:
+            assert set(["week", "count", "label"]).issubset(w.keys())
+            assert isinstance(w["count"], int)
+        assert isinstance(d["recent"], list)
+
+    def test_history_increment_on_complete(self, s, auth):
+        before = s.get(f"{API}/workouts/history/stats", headers=auth, timeout=15).json()
+        prev_total = before["total_completed"]
+        # Create and complete a workout
+        create = s.post(f"{API}/workouts", headers=auth, json={"title": "TEST HistIncr", "description": "", "exercises": []}, timeout=15)
+        assert create.status_code == 200
+        wid = create.json()["id"]
+        comp = s.post(f"{API}/workouts/{wid}/complete", headers=auth, timeout=15)
+        assert comp.status_code == 200
+        after = s.get(f"{API}/workouts/history/stats", headers=auth, timeout=15).json()
+        assert after["total_completed"] == prev_total + 1
+        # current streak must be >= 1 (this week has at least one)
+        assert after["current_streak_weeks"] >= 1
+        # Recent contains our workout
+        assert any(x["id"] == wid for x in after["recent"])
+        # cleanup
+        s.delete(f"{API}/workouts/{wid}", headers=auth, timeout=15)
+
+
+# ---------------- Coach IA chat (NEW iteration 2) ----------------
+class TestCoachChat:
+    def test_coach_chat_general_and_persistence(self, s, auth):
+        # Clear scope first
+        s.delete(f"{API}/coach/messages", headers=auth, timeout=15)
+        r = s.post(f"{API}/coach/chat", headers=auth, json={"message": "Bonjour coach, un conseil rapide ?"}, timeout=90)
+        assert r.status_code == 200, r.text
+        m = r.json()
+        assert m["role"] == "assistant"
+        assert m["workout_id"] is None
+        assert isinstance(m["content"], str) and len(m["content"]) > 0
+        # Persistence: list should return >= 2 (user + assistant)
+        r2 = s.get(f"{API}/coach/messages", headers=auth, timeout=15)
+        assert r2.status_code == 200
+        msgs = r2.json()
+        roles = [x["role"] for x in msgs]
+        assert "user" in roles and "assistant" in roles
+        # Chronological order
+        ts = [x["created_at"] for x in msgs]
+        assert ts == sorted(ts)
+        # cleanup
+        s.delete(f"{API}/coach/messages", headers=auth, timeout=15)
+        assert s.get(f"{API}/coach/messages", headers=auth, timeout=15).json() == []
+
+    def test_coach_chat_scoped_to_workout(self, s, auth):
+        # Create workout
+        create = s.post(f"{API}/workouts", headers=auth, json={
+            "title": "TEST Coach Scope",
+            "description": "haut du corps",
+            "exercises": [{"id": str(uuid.uuid4()), "name": "Pompes", "sets": 3, "reps": "10", "rest_seconds": 60, "notes": ""}],
+        }, timeout=15)
+        wid = create.json()["id"]
+        # Clear scoped
+        s.delete(f"{API}/coach/messages?workout_id={wid}", headers=auth, timeout=15)
+        s.delete(f"{API}/coach/messages", headers=auth, timeout=15)
+        # Post scoped message
+        r = s.post(f"{API}/coach/chat", headers=auth, json={"message": "Comment améliorer ma forme ?", "workout_id": wid}, timeout=90)
+        assert r.status_code == 200, r.text
+        assert r.json()["workout_id"] == wid
+        # Scoped list has messages
+        scoped = s.get(f"{API}/coach/messages?workout_id={wid}", headers=auth, timeout=15).json()
+        assert len(scoped) >= 2
+        assert all(x["workout_id"] == wid for x in scoped)
+        # General list must NOT include the scoped messages
+        general = s.get(f"{API}/coach/messages", headers=auth, timeout=15).json()
+        assert all(x["workout_id"] is None for x in general)
+        assert not any(x["id"] in [m["id"] for m in scoped] for x in general)
+        # Delete scoped clears only that scope
+        s.delete(f"{API}/coach/messages?workout_id={wid}", headers=auth, timeout=15)
+        assert s.get(f"{API}/coach/messages?workout_id={wid}", headers=auth, timeout=15).json() == []
+        # cleanup workout
+        s.delete(f"{API}/workouts/{wid}", headers=auth, timeout=15)
+
+    def test_coach_chat_validation(self, s, auth):
+        r = s.post(f"{API}/coach/chat", headers=auth, json={"message": ""}, timeout=15)
+        assert r.status_code == 422

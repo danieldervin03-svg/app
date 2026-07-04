@@ -5,6 +5,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, font, radius, spacing } from "@/src/theme";
 import { Button, Input } from "@/src/components/ui";
+import { CoachChat } from "@/src/components/coach-chat";
 import { api, Exercise, Workout } from "@/src/api";
 
 export default function WorkoutDetail() {
@@ -12,6 +13,7 @@ export default function WorkoutDetail() {
   const router = useRouter();
   const [workout, setWorkout] = useState<Workout | null>(null);
   const [loading, setLoading] = useState(true);
+  const [coachOpen, setCoachOpen] = useState(false);
 
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState<Exercise | null>(null);
@@ -137,6 +139,14 @@ export default function WorkoutDetail() {
             variant={workout.performed_at ? "secondary" : "primary"}
             style={{ flex: 1 }}
           />
+          <Pressable
+            onPress={() => setCoachOpen(true)}
+            style={styles.coachBtn}
+            testID="workout-coach-open"
+          >
+            <Ionicons name="sparkles" size={18} color={colors.onBrandPrimary} />
+            <Text style={styles.coachBtnTxt}>Coach IA</Text>
+          </Pressable>
         </View>
 
         <View style={styles.sectionRow}>
@@ -197,6 +207,13 @@ export default function WorkoutDetail() {
           </KeyboardAvoidingView>
         </View>
       </Modal>
+
+      <CoachChat
+        visible={coachOpen}
+        onClose={() => setCoachOpen(false)}
+        workoutId={workout.id}
+        title={`Coach · ${workout.title}`}
+      />
     </SafeAreaView>
   );
 }
@@ -213,6 +230,13 @@ const styles = StyleSheet.create({
   desc: { fontSize: font.base, color: colors.onSurfaceSecondary, marginBottom: spacing.sm },
   meta: { fontSize: font.sm, color: colors.onSurfaceTertiary, marginBottom: spacing.lg },
   actionsRow: { flexDirection: "row", gap: spacing.md, marginBottom: spacing.lg },
+  coachBtn: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    backgroundColor: colors.brandPrimary,
+    paddingHorizontal: spacing.lg, height: 52, borderRadius: radius.pill,
+    alignSelf: "flex-start",
+  },
+  coachBtnTxt: { color: colors.onBrandPrimary, fontSize: font.base },
   sectionRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: spacing.md },
   sectionH: { fontSize: font.xl, color: colors.onSurface, fontWeight: "500" },
   addBtn: {

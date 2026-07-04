@@ -518,6 +518,193 @@ async def summary_today(user: dict = Depends(get_current_user)):
 
 
 # ============================================================================
+# History & Stats
+# ============================================================================
+
+def _iso_week(dt: datetime) -> str:
+    iso = dt.isocalendar()
+    return f"{iso[0]}-W{iso[1]:02d}"
+
+
+@api.get("/workouts/history/stats")
+async def workouts_history(user: dict = Depends(get_current_user)):
+    """Return completed workouts + weekly counts (last 8 weeks) + current streak."""
+    done_docs = await db.workouts.find(
+        {"user_id": user["id"], "performed_at": {"$ne": None}},
+        {"_id": 0},
+    ).sort("performed_at", -1).to_list(500)
+
+    completed = [Workout(**d).model_dump() for d in done_docs]
+
+    # Weekly counts – last 8 iso weeks including current
+    now = datetime.now(timezone.utc)
+    weeks: List[dict] = []
+    week_labels: List[str] = []
+    for i in range(7, -1, -1):
+        d = now - timedelta(weeks=i)
+        label = _iso_week(d)
+        week_labels.append(label)
+        weeks.append({"week": label, "count": 0, "label": d.strftime("%d/%m")})
+
+    for w in completed:
+        try:
+            dt = datetime.fromisoformat(w["performed_at"].replace("Z", "+00:00"))
+            key = _iso_week(dt)
+            for entry in weeks:
+                if entry["week"] == key:
+                    entry["count"] += 1
+                    break
+        except Exception:
+            continue
+
+    # Current streak in consecutive weeks with >= 1 workout (from most recent)
+    current_streak = 0
+    for entry in reversed(weeks):
+        if entry["count"] > 0:
+            current_streak += 1
+        else:
+            break
+
+    # Best streak overall
+    best = 0
+    run = 0
+    for entry in weeks:
+        if entry["count"] > 0:
+            run += 1
+            best = max(best, run)
+        else:
+            run = 0
+
+    return {
+        "total_completed": len(completed),
+        "current_streak_weeks": current_streak,
+        "best_streak_weeks": best,
+        "weekly": weeks,
+        "recent": completed[:20],
+    }
+
+
+# ============================================================================
+# AI Coach chat
+# ============================================================================
+
+class CoachMessage(BaseModel):
+    id: str = Field(default_factory=new_id)
+    user_id: str
+    workout_id: Optional[str] = None
+    role: Literal["user", "assistant"]
+    content: str
+    created_at: str = Field(default_factory=now_utc)
+
+
+class CoachChatInput(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+    workout_id: Optional[str] = None
+
+
+@api.get("/coach/messages", response_model=List[CoachMessage])
+async def list_coach_messages(
+    workout_id: Optional[str] = None,
+    user: dict = Depends(get_current_user),
+):
+    query: dict = {"user_id": user["id"]}
+    if workout_id:
+        query["workout_id"] = workout_id
+    else:
+        query["workout_id"] = None
+    items = await db.coach_messages.find(query, {"_id": 0}).sort("created_at", 1).to_list(500)
+    return [CoachMessage(**it) for it in items]
+
+
+@api.delete("/coach/messages")
+async def clear_coach_messages(
+    workout_id: Optional[str] = None,
+    user: dict = Depends(get_current_user),
+):
+    query: dict = {"user_id": user["id"]}
+    if workout_id:
+        query["workout_id"] = workout_id
+    else:
+        query["workout_id"] = None
+    await db.coach_messages.delete_many(query)
+    return {"ok": True}
+
+
+@api.post("/coach/chat", response_model=CoachMessage)
+async def coach_chat(body: CoachChatInput, user: dict = Depends(get_current_user)):
+    # Persist user message
+    user_msg = CoachMessage(
+        user_id=user["id"],
+        workout_id=body.workout_id,
+        role="user",
+        content=body.message.strip(),
+    )
+    await db.coach_messages.insert_one(user_msg.model_dump())
+
+    # Build context
+    default_name = user.get("name") or "l'athlète"
+    context = f"L'utilisateur s'appelle {default_name}."
+    if body.workout_id:
+        wk = await db.workouts.find_one(
+            {"id": body.workout_id, "user_id": user["id"]}, {"_id": 0}
+        )
+        if wk:
+            ex_lines = "\n".join(
+                f"- {e['name']} : {e['sets']}x{e['reps']}, repos {e['rest_seconds']}s"
+                for e in wk.get("exercises", [])
+            )
+            context += (
+                f"\nProgramme actuel : « {wk['title']} »\n"
+                f"Description : {wk.get('description', '')}\n"
+                f"Exercices :\n{ex_lines or '(aucun)'}"
+            )
+
+    # Recent history for the same session
+    hist_query: dict = {"user_id": user["id"], "workout_id": body.workout_id}
+    hist_docs = await db.coach_messages.find(hist_query, {"_id": 0}).sort("created_at", -1).to_list(20)
+    hist_docs.reverse()
+
+    system = (
+        "Tu es Coach IA, un entraîneur sportif francophone bienveillant et concis. "
+        "Tu conseilles l'utilisateur sur son programme, la forme des exercices, la récupération, "
+        "les substitutions possibles et la progression. Tu réponds en français, en 3 à 6 phrases maximum, "
+        "sans utiliser de listes à puces sauf si l'utilisateur le demande, et sans markdown."
+        f"\n\nContexte :\n{context}"
+    )
+
+    session_id = f"coach-{user['id']}-{body.workout_id or 'general'}"
+    chat = LlmChat(
+        api_key=EMERGENT_LLM_KEY,
+        session_id=session_id,
+        system_message=system,
+    ).with_model("openai", "gpt-5.4")
+
+    # Compose the conversation as one prompt (session_id keeps continuity server-side too)
+    convo_lines = []
+    for m in hist_docs[:-1]:  # exclude the just-inserted user msg
+        prefix = "Utilisateur" if m["role"] == "user" else "Coach"
+        convo_lines.append(f"{prefix} : {m['content']}")
+    convo_lines.append(f"Utilisateur : {body.message.strip()}")
+    prompt = "\n".join(convo_lines)
+
+    try:
+        reply = await chat.send_message(UserMessage(text=prompt))
+        reply_text = reply.strip() if isinstance(reply, str) else str(reply).strip()
+    except Exception as e:
+        logger.error("Coach chat error: %s", e)
+        raise HTTPException(502, "Le coach IA est momentanément indisponible")
+
+    assistant_msg = CoachMessage(
+        user_id=user["id"],
+        workout_id=body.workout_id,
+        role="assistant",
+        content=reply_text[:4000] or "…",
+    )
+    await db.coach_messages.insert_one(assistant_msg.model_dump())
+    return assistant_msg
+
+
+# ============================================================================
 # App wiring
 # ============================================================================
 
