@@ -1,0 +1,180 @@
+{
+  "app_name": "Bodypilot",
+  "personality": "1 iOS-Native Clean",
+  "personality_one_liner": "Une interface claire, minimaliste et respirante où la donnée de santé est reine, rehaussée d'une touche de vert menthe dynamique pour l'action.",
+  "color": {
+    "surface": "#FFFFFF",
+    "onSurface": "#111827",
+    "surfaceSecondary": "#F7F9F8",
+    "onSurfaceSecondary": "#374151",
+    "surfaceTertiary": "#E5E7EB",
+    "onSurfaceTertiary": "#4B5563",
+    "surfaceInverse": "#111827",
+    "onSurfaceInverse": "#FFFFFF",
+    "brand": "#10B981",
+    "brandPrimary": "#059669",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#34D399",
+    "onBrandSecondary": "#064E3B",
+    "brandTertiary": "#D1FAE5",
+    "onBrandTertiary": "#065F46",
+    "success": "#059669",
+    "onSuccess": "#FFFFFF",
+    "warning": "#F59E0B",
+    "onWarning": "#FFFFFF",
+    "error": "#EF4444",
+    "onError": "#FFFFFF",
+    "info": "#64748B",
+    "onInfo": "#FFFFFF",
+    "border": "#E5E7EB",
+    "borderStrong": "#D1D5DB",
+    "divider": "#F3F4F6"
+  },
+  "typography": {
+    "displayFontFamily": "Plus Jakarta Sans",
+    "textFontFamily": "Plus Jakarta Sans",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous iOS-native rhythms. Cards should never be flush to the screen edge. Use md (12) to lg (16) inner padding for cards. Avoid dense dashboard grids; prefer clean single-column scrolling.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": 1,
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": true,
+    "do's": [
+      "Use glass on bottom tab bar",
+      "Use glass for sticky screen headers over scrolling content",
+      "Use glass for bottom sheet drag handles/headers"
+    ],
+    "dont's": [
+      "Do not use glass for list items or standard cards",
+      "Do not blur form fields or body text regions"
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Auth",
+      "purpose": "Écran de connexion et d'inscription minimaliste pour Bodypilot.",
+      "states": {
+        "loading": "Centered mint spinner.",
+        "empty": "N/A",
+        "error": "Standard error text above inputs."
+      },
+      "layout": "Hero image at the top with a gradient scrim to white, followed by clean single-column form inputs and a full-width sticky CTA button 'Se connecter' or 'S\\'inscrire' at the bottom."
+    },
+    {
+      "name": "HomeDashboard",
+      "purpose": "Résumé de la journée : calories restantes, prochain entraînement et progrès de la semaine.",
+      "states": {
+        "loading": "Skeleton cards.",
+        "empty": "Illustration + 'Prêt pour votre première session ?'",
+        "error": "Message d'erreur avec bouton 'Réessayer'."
+      },
+      "layout": "Vertical scroll. Top section: Today's Date & Greeting. Middle: A circular progress or clean metric row for 'Calories Restantes'. Next: A 'Prochain Entraînement' card (with hero gym image background + scrim). Bottom: Quick stats."
+    },
+    {
+      "name": "Workouts (List & AI Generator)",
+      "purpose": "Afficher l'historique et permettre de générer ou modifier un programme d'entraînement via l'IA.",
+      "states": {
+        "loading": "Spinner during AI generation.",
+        "empty": "'Aucun entraînement. Laissez l\\'IA vous guider.' + Bouton primaire CTA.",
+        "error": "Failed to generate workout, retry button."
+      },
+      "layout": "List of workout cards. A sticky FAB or primary bottom CTA 'Demander à l\\'IA'. AI Generator should be a form/chat UI over the abstract green background leading to an editable list of exercises. Exercises can be swiped to delete, or tapped to swap."
+    },
+    {
+      "name": "Nutrition",
+      "purpose": "Suivi des calories avec option de suggestion de repas via l'IA.",
+      "states": {
+        "loading": "Spinner.",
+        "empty": "No meals logged. 'Loggez votre premier repas.'",
+        "error": "Error fetching AI meals."
+      },
+      "layout": "Header shows Calorie Goal vs Eaten. Below: A list of logged meals (Breakfast, Lunch, Dinner). Floating 'Idées Repas IA' button that generates a meal plan card (with the salad image) fitting the remaining calories."
+    },
+    {
+      "name": "Progress",
+      "purpose": "Suivi du poids et des mensurations.",
+      "states": {
+        "loading": "Chart skeletons.",
+        "empty": "No data yet.",
+        "error": "Error loading charts."
+      },
+      "layout": "Line chart at the top. List of recent measurement logs below it. Top right '+' icon to add a new measurement."
+    },
+    {
+      "name": "Profile",
+      "purpose": "Gestion du compte, objectifs, et déconnexion.",
+      "states": {
+        "loading": "Spinner.",
+        "empty": "N/A",
+        "error": "Error loading user data."
+      },
+      "layout": "Initials Avatar in a brandTertiary circle. List of settings rows with Phosphor icons wrapped in tinted brandTertiary squares."
+    }
+  ],
+  "images": {
+    "hero_gym": {
+      "url": "https://images.pexels.com/photos/36717701/pexels-photo-36717701.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "alt": "Minimalist gym equipment"
+    },
+    "ai_meals": {
+      "url": "https://images.unsplash.com/photo-1512621776951-a57141f2eefd",
+      "alt": "Healthy green salad bowl"
+    },
+    "ai_generator_bg": {
+      "url": "https://images.unsplash.com/photo-1617957718645-7680362d6312?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzJ8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMGdyZWVuJTIwZ3JhZGllbnQlMjBtb2Rlcm58ZW58MHx8fHwxNzgyOTgzOTkzfDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Abstract green modern gradient"
+    }
+  },
+  "haptics": {
+    "primary_button_press": "light",
+    "tab_change": "light",
+    "swipe_delete_exercise": "medium",
+    "log_meal_success": "success",
+    "generate_ai_complete": "success"
+  },
+  "instructions_to_main_agent": [
+    "ALL text must be in French as explicitly requested in the problem statement.",
+    "Strictly follow the 500 max font-weight rule. Do NOT use SemiBold, Bold, or weight 600+. Use size and color to establish hierarchy (e.g., textFontFamily with size xl for headers).",
+    "No blue or purple colors whatsoever. The app relies strictly on the mint green palette ('vert menthe') and minimalist white/greys.",
+    "Implement a gradient scrim (top to bottom, transparent to >=70% surfaceInverse) any time text is placed over the hero images (hero_gym, ai_meals, ai_generator_bg).",
+    "For the Workout Editor, use large tap targets (min 56pt height) and implement swipe-to-delete using gesture-handler for exercises.",
+    "For settings and list items, wrap leading icons in a `brandTertiary` tinted rounded square instead of leaving them bare.",
+    "Ensure the sticky primary CTA pattern is used at the bottom of forms (Auth, Log Meal, Workout generation) with safe area padding to prevent overlap with the home indicator.",
+    "Incorporate haptics for interactive elements based on the haptics mapping provided."
+  ]
+}
