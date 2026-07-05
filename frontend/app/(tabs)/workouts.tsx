@@ -33,14 +33,23 @@ export default function WorkoutsScreen() {
     <SafeAreaView style={styles.container} testID="workouts-screen">
       <View style={styles.header}>
         <Text style={styles.title}>Entraînements</Text>
-        <Pressable
-          style={styles.headerBtn}
-          onPress={() => router.push("/workout/generate" as any)}
-          testID="workouts-generate-fab"
-        >
-          <Ionicons name="sparkles" size={16} color={colors.onBrandPrimary} />
-          <Text style={styles.headerBtnTxt}>IA</Text>
-        </Pressable>
+        <View style={{ flexDirection: "row", gap: spacing.sm }}>
+          <Pressable
+            style={styles.headerBtnAlt}
+            onPress={() => router.push("/workout/new" as any)}
+            testID="workouts-manual-add"
+          >
+            <Ionicons name="add" size={18} color={colors.brandPrimary} />
+          </Pressable>
+          <Pressable
+            style={styles.headerBtn}
+            onPress={() => router.push("/workout/generate" as any)}
+            testID="workouts-generate-fab"
+          >
+            <Ionicons name="sparkles" size={16} color={colors.onBrandPrimary} />
+            <Text style={styles.headerBtnTxt}>IA</Text>
+          </Pressable>
+        </View>
       </View>
 
       {loading ? (
@@ -69,11 +78,7 @@ export default function WorkoutsScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <View style={styles.rowTop}>
-                  {item.week_day ? (
-                    <View style={styles.dayPill}>
-                      <Text style={styles.dayPillTxt}>{item.week_day}</Text>
-                    </View>
-                  ) : item.program_type === "full_body" && item.session_index ? (
+                  {item.session_index ? (
                     <View style={styles.dayPill}>
                       <Text style={styles.dayPillTxt}>Séance {item.session_index}</Text>
                     </View>
@@ -119,6 +124,11 @@ const styles = StyleSheet.create({
     flexDirection: "row", alignItems: "center", gap: 6,
     backgroundColor: colors.brandPrimary, paddingHorizontal: spacing.md, paddingVertical: 6,
     borderRadius: radius.pill,
+  },
+  headerBtnAlt: {
+    width: 34, height: 34, borderRadius: 17,
+    alignItems: "center", justifyContent: "center",
+    borderWidth: 1, borderColor: colors.brandPrimary, backgroundColor: colors.surface,
   },
   headerBtnTxt: { color: colors.onBrandPrimary, fontSize: font.sm },
   list: { padding: spacing.lg, paddingBottom: 120 },

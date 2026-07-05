@@ -50,6 +50,7 @@ export type User = {
   calorie_goal_auto: boolean;
   calorie_last_adjust_at: string | null;
   calorie_last_adjust_reason: string | null;
+  meals_per_day: number;
   sex: "homme" | "femme" | null;
   age: number | null;
   height_cm: number | null;
@@ -57,6 +58,21 @@ export type User = {
   activity_level: "sédentaire" | "léger" | "modéré" | "actif" | "très actif" | null;
   fitness_goal: "prise de masse" | "sèche" | "maintien" | null;
   created_at: string;
+};
+
+export type Deload = {
+  exercise_id: string;
+  exercise_name: string;
+  consecutive_failures: number;
+  new_target_weight_kg: number;
+  reason: string;
+};
+
+export type ExerciseHistoryPoint = {
+  performed_at: string;
+  weight_kg: number | null;
+  difficulty: "facile" | "reussi" | "echec" | null;
+  reps_done: number | null;
 };
 
 export type CalorieRecommendation = {
@@ -190,6 +206,8 @@ export const api = {
     request<User>("/user/calorie-goal", { method: "PUT", body: { calorie_goal } }),
   updateProfile: (body: ProfileInput) =>
     request<User>("/user/profile", { method: "PUT", body }),
+  updateMealsPerDay: (meals_per_day: number) =>
+    request<User>("/user/meals-per-day", { method: "PUT", body: { meals_per_day } }),
   calorieRecommendation: () =>
     request<CalorieRecommendation>("/user/calorie-recommendation"),
   applyCalorieRecommendation: () =>

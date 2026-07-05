@@ -954,7 +954,10 @@ class TestProgramAndLog:
         ]
         r = s.post(f"{API}/workouts/{wid}/log", headers=auth, json={"entries": entries}, timeout=15)
         assert r.status_code == 200, r.text
-        updated = r.json()
+        res = r.json()
+        assert "workout" in res and "deloads" in res
+        assert isinstance(res["deloads"], list)
+        updated = res["workout"]
         assert updated["performed_at"] is not None
         by_id = {e["id"]: e for e in updated["exercises"]}
         assert by_id[wk["exercises"][0]["id"]]["target_weight_kg"] == 42.0
@@ -976,7 +979,7 @@ class TestProgramAndLog:
             {"exercise_id": eid, "difficulty": "facile", "weight_kg": 60.0, "reps_done": 8}
         ]}, timeout=15)
         assert r.status_code == 200, r.text
-        ex = r.json()["exercises"][0]
+        ex = r.json()["workout"]["exercises"][0]
         assert ex["last_weight_kg"] == 60.0
         assert ex["last_reps_done"] == 8
         assert ex["target_weight_kg"] == 63.0
@@ -992,7 +995,7 @@ class TestProgramAndLog:
             {"exercise_id": real_eid, "difficulty": "reussi"},
         ]}, timeout=15)
         assert r.status_code == 200, r.text
-        updated = r.json()
+        updated = r.json()["workout"]
         # real exercise updated: 20 * 1.025 = 20.5 → round(41)/2 = 20.5
         assert updated["exercises"][0]["target_weight_kg"] == 20.5
         assert updated["exercises"][0]["last_difficulty"] == "reussi"
@@ -1036,5 +1039,180 @@ class TestProgramAndLog:
         r = s.post(f"{API}/workouts/{wid}/log", headers=auth, json={"entries": [
             {"exercise_id": eid, "difficulty": "trop_facile"}
         ]}, timeout=15)
+
+
+# ---------------- NEW iteration 7: meals_per_day, exercise history, deload ----------------
+class TestMealsPerDay:
+    def test_new_user_default_meals_per_day(self, s):
+        token, _, _ = _register_user(s)
+        r = s.get(f"{API}/auth/me", headers=_h(token), timeout=15)
+        assert r.status_code == 200
+        assert r.json().get("meals_per_day") == 4
+
+    def test_update_meals_per_day_valid(self, s):
+        token, _, _ = _register_user(s)
+        r = s.put(f"{API}/user/meals-per-day", headers=_h(token), json={"meals_per_day": 6}, timeout=15)
+        assert r.status_code == 200, r.text
+        assert r.json()["meals_per_day"] == 6
+        # Persistence via /me
+        me = s.get(f"{API}/auth/me", headers=_h(token), timeout=15).json()
+        assert me["meals_per_day"] == 6
+
+    def test_update_meals_per_day_out_of_range(self, s):
+        token, _, _ = _register_user(s)
+        for val in [1, 9, 0, 100]:
+            r = s.put(f"{API}/user/meals-per-day", headers=_h(token),
+                      json={"meals_per_day": val}, timeout=15)
+            assert r.status_code == 422, f"val={val} should be 422, got {r.status_code}"
+
+    def test_update_meals_per_day_requires_auth(self, s):
+        r = s.put(f"{API}/user/meals-per-day", json={"meals_per_day": 5}, timeout=15)
+        assert r.status_code in (401, 403)
+
+
+class TestExerciseHistory:
+    def test_history_empty_for_unknown_exercise(self, s, auth):
+        r = s.get(f"{API}/exercises/history", headers=auth,
+                  params={"name": f"NoSuchExercise_{uuid.uuid4().hex[:6]}"}, timeout=15)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert "exercise_name" in d and "points" in d
+        assert d["points"] == []
+
+    def test_history_returns_points_sorted_asc_case_insensitive(self, s):
+        token, _, _ = _register_user(s)
+        h = _h(token)
+        # Create a workout with a known exercise
+        wk = s.post(f"{API}/workouts", headers=h, json={
+            "title": "TEST_iter7 hist", "description": "",
+            "exercises": [{"id": str(uuid.uuid4()), "name": "Développé Couché",
+                           "sets": 3, "reps": "10", "rest_seconds": 60, "notes": "",
+                           "target_weight_kg": 40.0}],
+        }, timeout=15).json()
+        wid = wk["id"]
+        eid = wk["exercises"][0]["id"]
+        # Log a couple of sessions
+        s.post(f"{API}/workouts/{wid}/log", headers=h, json={"entries": [
+            {"exercise_id": eid, "difficulty": "reussi", "weight_kg": 40.0, "reps_done": 10}
+        ]}, timeout=15)
+        import time
+        time.sleep(1.1)
+        s.post(f"{API}/workouts/{wid}/log", headers=h, json={"entries": [
+            {"exercise_id": eid, "difficulty": "facile", "weight_kg": 42.5, "reps_done": 10}
+        ]}, timeout=15)
+        # Case insensitive match
+        r = s.get(f"{API}/exercises/history", headers=h,
+                  params={"name": "développé couché"}, timeout=15)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d["exercise_name"] == "développé couché"
+        assert len(d["points"]) == 2
+        pts = d["points"]
+        # Sorted ASC by performed_at
+        assert pts[0]["performed_at"] <= pts[1]["performed_at"]
+        assert pts[0]["weight_kg"] == 40.0 and pts[0]["difficulty"] == "reussi"
+        assert pts[1]["weight_kg"] == 42.5 and pts[1]["difficulty"] == "facile"
+        for p in pts:
+            assert "performed_at" in p and "weight_kg" in p and "difficulty" in p and "reps_done" in p
+        s.delete(f"{API}/workouts/{wid}", headers=h, timeout=15)
+
+    def test_history_requires_auth(self, s):
+        r = s.get(f"{API}/exercises/history", params={"name": "Squat"}, timeout=15)
+        assert r.status_code in (401, 403)
+
+
+class TestDeload:
+    def _make(self, s, h, name="TEST Deload Bench", target=100.0):
+        wk = s.post(f"{API}/workouts", headers=h, json={
+            "title": f"TEST_iter7 deload {uuid.uuid4().hex[:4]}", "description": "",
+            "exercises": [{"id": str(uuid.uuid4()), "name": name,
+                           "sets": 3, "reps": "10", "rest_seconds": 60, "notes": "",
+                           "target_weight_kg": target}],
+        }, timeout=15).json()
+        return wk
+
+    def test_deload_triggered_on_3rd_consecutive_echec(self, s):
+        token, _, _ = _register_user(s)
+        h = _h(token)
+        wk = self._make(s, h, target=100.0)
+        wid = wk["id"]
+        eid = wk["exercises"][0]["id"]
+
+        # 1st echec: 100 * 0.95 = 95.0 → deloads empty
+        r1 = s.post(f"{API}/workouts/{wid}/log", headers=h, json={"entries": [
+            {"exercise_id": eid, "difficulty": "echec", "weight_kg": 100.0}
+        ]}, timeout=15).json()
+        assert r1["deloads"] == []
+        assert r1["workout"]["exercises"][0]["target_weight_kg"] == 95.0
+
+        # 2nd echec: 95 * 0.95 = 90.25 → round(180.5)/2 = 90.0 (banker's rounds .5 to even)
+        import time
+        time.sleep(1.1)
+        r2 = s.post(f"{API}/workouts/{wid}/log", headers=h, json={"entries": [
+            {"exercise_id": eid, "difficulty": "echec", "weight_kg": 95.0}
+        ]}, timeout=15).json()
+        assert r2["deloads"] == []
+        prev_target = r2["workout"]["exercises"][0]["target_weight_kg"]
+        assert prev_target in (90.0, 90.5), f"got {prev_target}"
+
+        # 3rd echec: triggers deload = prev_target * 0.9 rounded 0.5
+        time.sleep(1.1)
+        r3 = s.post(f"{API}/workouts/{wid}/log", headers=h, json={"entries": [
+            {"exercise_id": eid, "difficulty": "echec", "weight_kg": prev_target}
+        ]}, timeout=15).json()
+        assert len(r3["deloads"]) == 1, r3
+        dl = r3["deloads"][0]
+        assert dl["exercise_id"] == eid
+        assert dl["exercise_name"] == "TEST Deload Bench"
+        assert dl["consecutive_failures"] >= 3
+        # target_after_log = prev_target * 0.95 (from _next_target_after_log); then deload = *0.9
+        after_overload = round(prev_target * 0.95 * 2) / 2
+        expected_deload = round(after_overload * 0.9 * 2) / 2
+        assert dl["new_target_weight_kg"] == expected_deload
+        assert r3["workout"]["exercises"][0]["target_weight_kg"] == expected_deload
+        s.delete(f"{API}/workouts/{wid}", headers=h, timeout=15)
+
+    def test_deload_not_triggered_when_streak_broken(self, s):
+        token, _, _ = _register_user(s)
+        h = _h(token)
+        wk = self._make(s, h, target=80.0)
+        wid = wk["id"]
+        eid = wk["exercises"][0]["id"]
+        import time
+        # echec, echec, reussi (breaks streak), echec, echec → last streak=2 → no deload
+        for i, diff in enumerate(["echec", "echec", "reussi", "echec", "echec"]):
+            r = s.post(f"{API}/workouts/{wid}/log", headers=h, json={"entries": [
+                {"exercise_id": eid, "difficulty": diff, "weight_kg": 80.0}
+            ]}, timeout=15).json()
+            if i < 4:
+                assert r["deloads"] == [], f"unexpected deload at step {i}"
+            time.sleep(1.1)
+        # Final log had streak=2 (last 2 echecs), reussi before that
+        # r above is the 5th log's response
+        assert r["deloads"] == [], f"streak was broken by reussi, no deload expected: {r}"
+        s.delete(f"{API}/workouts/{wid}", headers=h, timeout=15)
+
+    def test_deload_only_once_per_exercise_per_log(self, s):
+        token, _, _ = _register_user(s)
+        h = _h(token)
+        wk = self._make(s, h, target=100.0)
+        wid = wk["id"]
+        eid = wk["exercises"][0]["id"]
+        import time
+        for _ in range(3):
+            s.post(f"{API}/workouts/{wid}/log", headers=h, json={"entries": [
+                {"exercise_id": eid, "difficulty": "echec", "weight_kg": 100.0}
+            ]}, timeout=15)
+            time.sleep(1.1)
+        # 3rd log response
+        r = s.post(f"{API}/workouts/{wid}/log", headers=h, json={"entries": [
+            {"exercise_id": eid, "difficulty": "echec", "weight_kg": 100.0},
+            {"exercise_id": eid, "difficulty": "echec", "weight_kg": 100.0},  # dup entry same exercise
+        ]}, timeout=15).json()
+        # Should list deload at most once for that exercise
+        ex_ids = [d["exercise_id"] for d in r["deloads"]]
+        assert ex_ids.count(eid) <= 1, f"deload listed multiple times: {r['deloads']}"
+        s.delete(f"{API}/workouts/{wid}", headers=h, timeout=15)
+
         assert r.status_code == 422
         s.delete(f"{API}/workouts/{wid}", headers=auth, timeout=15)

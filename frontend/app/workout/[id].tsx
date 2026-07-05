@@ -6,7 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { colors, font, radius, spacing } from "@/src/theme";
 import { Button, Input } from "@/src/components/ui";
 import { CoachChat } from "@/src/components/coach-chat";
-import { api, Exercise, LogEntry, Workout } from "@/src/api";
+import { api, Deload, Exercise, ExerciseHistoryPoint, LogEntry, Workout } from "@/src/api";
 
 type Difficulty = "facile" | "reussi" | "echec";
 const DIFFICULTIES: { key: Difficulty; label: string; color: string; icon: any }[] = [
@@ -24,6 +24,10 @@ export default function WorkoutDetail() {
   const [logOpen, setLogOpen] = useState(false);
   const [logSaving, setLogSaving] = useState(false);
   const [logEntries, setLogEntries] = useState<Record<string, LogEntry>>({});
+  const [deloads, setDeloads] = useState<Deload[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyExName, setHistoryExName] = useState<string>("");
+  const [historyPoints, setHistoryPoints] = useState<ExerciseHistoryPoint[]>([]);
 
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState<Exercise | null>(null);
@@ -120,11 +124,23 @@ export default function WorkoutDetail() {
     setLogSaving(true);
     try {
       const entries = Object.values(logEntries);
-      const w = await api.logSession(workout.id, entries);
-      setWorkout(w);
+      const res = await api.logSession(workout.id, entries);
+      setWorkout(res.workout);
+      setDeloads(res.deloads);
       setLogOpen(false);
     } catch {} finally {
       setLogSaving(false);
+    }
+  };
+
+  const openHistory = async (exName: string) => {
+    setHistoryExName(exName);
+    setHistoryOpen(true);
+    try {
+      const res = await api.exerciseHistory(exName);
+      setHistoryPoints(res.points);
+    } catch {
+      setHistoryPoints([]);
     }
   };
 
@@ -200,18 +216,39 @@ export default function WorkoutDetail() {
           </Pressable>
         </View>
 
+        {deloads.length > 0 ? (
+          <View style={styles.deloadBanner} testID="deload-banner">
+            <View style={styles.deloadIcon}>
+              <Ionicons name="warning" size={16} color="#FFF" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.deloadTitle}>Deload appliqué</Text>
+              {deloads.map((d) => (
+                <Text key={d.exercise_id} style={styles.deloadTxt}>
+                  {d.exercise_name} : {d.new_target_weight_kg} kg (−10 %)
+                </Text>
+              ))}
+            </View>
+            <Pressable onPress={() => setDeloads([])}>
+              <Ionicons name="close" size={18} color={colors.onSurfaceSecondary} />
+            </Pressable>
+          </View>
+        ) : null}
+
         {workout.exercises.map((ex) => {
           const diffMeta = ex.last_difficulty
             ? DIFFICULTIES.find((d) => d.key === ex.last_difficulty)
             : null;
           return (
             <View key={ex.id} style={styles.exRow} testID={`exercise-${ex.id}`}>
-              <View style={styles.exIcon}>
-                <Ionicons name="fitness-outline" size={18} color={colors.onBrandTertiary} />
-              </View>
+              <Pressable onPress={() => openHistory(ex.name)} style={styles.exIcon} testID={`ex-history-${ex.id}`}>
+                <Ionicons name="trending-up-outline" size={18} color={colors.onBrandTertiary} />
+              </Pressable>
               <View style={{ flex: 1 }}>
                 <View style={styles.exTopRow}>
-                  <Text style={styles.exName} numberOfLines={1}>{ex.name}</Text>
+                  <Pressable onPress={() => openHistory(ex.name)} style={{ flex: 1 }}>
+                    <Text style={styles.exName} numberOfLines={1}>{ex.name}</Text>
+                  </Pressable>
                   {diffMeta ? (
                     <View style={[styles.diffPill, { backgroundColor: diffMeta.color + "22" }]}>
                       <Ionicons name={diffMeta.icon} size={10} color={diffMeta.color} />
@@ -339,6 +376,69 @@ export default function WorkoutDetail() {
         workoutId={workout.id}
         title={`Coach · ${workout.title}`}
       />
+
+      {/* Exercise history chart modal */}
+      <Modal visible={historyOpen} animationType="slide" onRequestClose={() => setHistoryOpen(false)} presentationStyle="pageSheet">
+        <SafeAreaView style={styles.container}>
+          <View style={styles.header}>
+            <Pressable onPress={() => setHistoryOpen(false)} style={styles.iconBtn} testID="history-close">
+              <Ionicons name="close" size={22} color={colors.onSurface} />
+            </Pressable>
+            <Text style={styles.headerTitle} numberOfLines={1}>{historyExName}</Text>
+            <View style={styles.iconBtn} />
+          </View>
+          <ScrollView contentContainerStyle={{ padding: spacing.lg }}>
+            {historyPoints.length === 0 ? (
+              <Text style={styles.emptyEx}>Aucun historique pour cet exercice</Text>
+            ) : (
+              <>
+                <Text style={styles.logIntro}>
+                  {historyPoints.length} séance{historyPoints.length > 1 ? "s" : ""} enregistrée{historyPoints.length > 1 ? "s" : ""}
+                </Text>
+                {(() => {
+                  const weightsPts = historyPoints.filter((p) => p.weight_kg != null);
+                  if (weightsPts.length < 2) {
+                    return <Text style={styles.emptyEx}>Ajoutez au moins 2 séances avec poids pour voir la courbe.</Text>;
+                  }
+                  const vals = weightsPts.map((p) => p.weight_kg as number);
+                  const max = Math.max(...vals);
+                  const min = Math.min(...vals);
+                  const range = Math.max(0.5, max - min);
+                  return (
+                    <View style={styles.chartBox}>
+                      {weightsPts.map((p, i) => {
+                        const h = ((p.weight_kg as number) - min) / range;
+                        const barColor = p.difficulty === "facile" ? "#65A30D"
+                          : p.difficulty === "echec" ? "#DC2626"
+                          : "#0891B2";
+                        return (
+                          <View key={i} style={styles.chartCol}>
+                            <View style={[styles.chartBar, { height: 15 + h * 100, backgroundColor: barColor }]} />
+                            <Text style={styles.chartVal}>{p.weight_kg}</Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  );
+                })()}
+                <Text style={styles.sectionH}>Détails</Text>
+                {[...historyPoints].reverse().map((p, i) => (
+                  <View key={i} style={styles.histLine} testID={`history-point-${i}`}>
+                    <Text style={styles.histDate}>
+                      {new Date(p.performed_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}
+                    </Text>
+                    <Text style={styles.histVal}>
+                      {p.weight_kg ? `${p.weight_kg} kg` : "—"}
+                      {p.reps_done ? ` × ${p.reps_done}` : ""}
+                    </Text>
+                    <Text style={styles.histDiff}>{p.difficulty ?? ""}</Text>
+                  </View>
+                ))}
+              </>
+            )}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -400,6 +500,33 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
   },
   diffBtnTxt: { fontSize: font.sm, color: colors.onSurface, fontWeight: "500" },
+  deloadBanner: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    padding: spacing.md, marginBottom: spacing.md,
+    backgroundColor: "#FEF3C7", borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.warning,
+  },
+  deloadIcon: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: colors.warning, alignItems: "center", justifyContent: "center",
+  },
+  deloadTitle: { fontSize: font.base, color: "#78350F", fontWeight: "500" },
+  deloadTxt: { fontSize: font.sm, color: "#78350F", marginTop: 2 },
+  chartBox: {
+    flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between",
+    gap: 4, height: 140, padding: spacing.md, backgroundColor: colors.surfaceSecondary,
+    borderRadius: radius.md, marginBottom: spacing.lg,
+  },
+  chartCol: { flex: 1, alignItems: "center", justifyContent: "flex-end" },
+  chartBar: { width: "70%", borderTopLeftRadius: 4, borderTopRightRadius: 4 },
+  chartVal: { fontSize: 9, color: colors.onSurfaceSecondary, marginTop: 4 },
+  histLine: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    padding: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.divider,
+  },
+  histDate: { flex: 1, fontSize: font.base, color: colors.onSurfaceSecondary },
+  histVal: { fontSize: font.base, color: colors.onSurface, fontWeight: "500", marginHorizontal: spacing.sm },
+  histDiff: { fontSize: font.sm, color: colors.onSurfaceTertiary, textTransform: "capitalize" },
   exSub: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginTop: 2 },
   exNote: { fontSize: font.sm, color: colors.onSurfaceTertiary, marginTop: 4, fontStyle: "italic" },
   miniBtn: { padding: spacing.sm },

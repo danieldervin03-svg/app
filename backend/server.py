@@ -67,9 +67,10 @@ class UserPublic(BaseModel):
     email: EmailStr
     name: str
     calorie_goal: int = 2000
-    calorie_goal_auto: bool = True  # true = recomputed from profile; false = manual override
+    calorie_goal_auto: bool = True
     calorie_last_adjust_at: Optional[str] = None
     calorie_last_adjust_reason: Optional[str] = None
+    meals_per_day: int = 4
     sex: Optional[Literal["homme", "femme"]] = None
     age: Optional[int] = None
     height_cm: Optional[float] = None
@@ -77,6 +78,10 @@ class UserPublic(BaseModel):
     activity_level: Optional[Literal["sédentaire", "léger", "modéré", "actif", "très actif"]] = None
     fitness_goal: Optional[Literal["prise de masse", "sèche", "maintien"]] = None
     created_at: str
+
+
+class MealsPerDayUpdate(BaseModel):
+    meals_per_day: int = Field(ge=2, le=8)
 
 
 class ProfileUpdate(BaseModel):
@@ -292,6 +297,7 @@ def public_user(u: dict) -> UserPublic:
         calorie_goal_auto=u.get("calorie_goal_auto", True),
         calorie_last_adjust_at=u.get("calorie_last_adjust_at"),
         calorie_last_adjust_reason=u.get("calorie_last_adjust_reason"),
+        meals_per_day=u.get("meals_per_day", 4),
         sex=u.get("sex"),
         age=u.get("age"),
         height_cm=u.get("height_cm"),
@@ -318,6 +324,7 @@ async def register(body: RegisterInput):
         "password_hash": hash_password(body.password),
         "calorie_goal": 2000,
         "calorie_goal_auto": True,
+        "meals_per_day": 4,
         "sex": None,
         "age": None,
         "height_cm": None,
@@ -351,6 +358,13 @@ async def update_calorie_goal(body: CalorieGoalUpdate, user: dict = Depends(get_
         {"id": user["id"]},
         {"$set": {"calorie_goal": body.calorie_goal, "calorie_goal_auto": False}},
     )
+    updated = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password_hash": 0})
+    return public_user(updated)
+
+
+@api.put("/user/meals-per-day", response_model=UserPublic)
+async def update_meals_per_day(body: MealsPerDayUpdate, user: dict = Depends(get_current_user)):
+    await db.users.update_one({"id": user["id"]}, {"$set": {"meals_per_day": body.meals_per_day}})
     updated = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password_hash": 0})
     return public_user(updated)
 
@@ -613,7 +627,7 @@ def _next_target_after_log(prev_weight: Optional[float], difficulty: str) -> Opt
     return prev_weight
 
 
-@api.post("/workouts/{workout_id}/log", response_model=Workout)
+@api.post("/workouts/{workout_id}/log")
 async def log_session(workout_id: str, body: SessionLogInput, user: dict = Depends(get_current_user)):
     doc = await db.workouts.find_one({"id": workout_id, "user_id": user["id"]}, {"_id": 0})
     if not doc:
@@ -621,12 +635,12 @@ async def log_session(workout_id: str, body: SessionLogInput, user: dict = Depen
 
     exercises = doc.get("exercises", [])
     ex_by_id = {e["id"]: e for e in exercises}
+    deloads: List[dict] = []
 
     for entry in body.entries:
         ex = ex_by_id.get(entry.exercise_id)
         if not ex:
             continue
-        # Record what was done
         ex["last_difficulty"] = entry.difficulty
         prev_target = ex.get("target_weight_kg")
         if entry.weight_kg is not None:
@@ -636,12 +650,11 @@ async def log_session(workout_id: str, body: SessionLogInput, user: dict = Depen
             base_weight = prev_target
         if entry.reps_done is not None:
             ex["last_reps_done"] = entry.reps_done
-        # Progressive overload → new target weight for next session
         new_target = _next_target_after_log(base_weight, entry.difficulty)
         if new_target is not None:
             ex["target_weight_kg"] = new_target
 
-    # Save log document + mark workout as performed
+    # Save log doc + mark performed
     log_doc = {
         "id": new_id(),
         "user_id": user["id"],
@@ -654,8 +667,41 @@ async def log_session(workout_id: str, body: SessionLogInput, user: dict = Depen
         {"id": workout_id},
         {"$set": {"exercises": exercises, "performed_at": now_utc()}},
     )
+
+    # Intelligent deload detection: 3 consecutive "echec" per exercise across all past logs
+    past_logs = await db.session_logs.find(
+        {"user_id": user["id"], "workout_id": workout_id},
+        {"_id": 0},
+    ).sort("performed_at", -1).to_list(20)
+    for entry in body.entries:
+        ex = ex_by_id.get(entry.exercise_id)
+        if not ex:
+            continue
+        streak = 0
+        for lg in past_logs:  # most recent first
+            found = next((e for e in lg["entries"] if e["exercise_id"] == entry.exercise_id), None)
+            if not found:
+                continue
+            if found["difficulty"] == "echec":
+                streak += 1
+            else:
+                break
+        if streak >= 3 and ex.get("target_weight_kg"):
+            deload_target = round(ex["target_weight_kg"] * 0.9 * 2) / 2  # -10%
+            ex["target_weight_kg"] = deload_target
+            deloads.append({
+                "exercise_id": ex["id"],
+                "exercise_name": ex["name"],
+                "consecutive_failures": streak,
+                "new_target_weight_kg": deload_target,
+                "reason": f"3 échecs consécutifs — deload automatique de 10% suggéré ({deload_target} kg).",
+            })
+
+    if deloads:
+        await db.workouts.update_one({"id": workout_id}, {"$set": {"exercises": exercises}})
+
     updated = await db.workouts.find_one({"id": workout_id}, {"_id": 0})
-    return Workout(**updated)
+    return {"workout": Workout(**updated).model_dump(), "deloads": deloads}
 
 
 @api.get("/workouts/{workout_id}/logs")
@@ -664,6 +710,36 @@ async def workout_logs(workout_id: str, user: dict = Depends(get_current_user)):
         {"user_id": user["id"], "workout_id": workout_id}, {"_id": 0}
     ).sort("performed_at", -1).to_list(200)
     return items
+
+
+@api.get("/exercises/history")
+async def exercise_history(name: str, user: dict = Depends(get_current_user)):
+    """Return chronological history for a given exercise name across all workouts."""
+    workouts = await db.workouts.find({"user_id": user["id"]}, {"_id": 0}).to_list(500)
+    # map exercise_id -> exercise info (name)
+    ex_id_map: dict = {}
+    for w in workouts:
+        for e in w.get("exercises", []):
+            if e.get("name", "").strip().lower() == name.strip().lower():
+                ex_id_map[e["id"]] = e["name"]
+    if not ex_id_map:
+        return {"exercise_name": name, "points": []}
+
+    logs = await db.session_logs.find(
+        {"user_id": user["id"]}, {"_id": 0}
+    ).sort("performed_at", 1).to_list(1000)
+    points = []
+    for lg in logs:
+        for entry in lg.get("entries", []):
+            if entry.get("exercise_id") in ex_id_map:
+                points.append({
+                    "performed_at": lg["performed_at"],
+                    "weight_kg": entry.get("weight_kg"),
+                    "difficulty": entry.get("difficulty"),
+                    "reps_done": entry.get("reps_done"),
+                })
+                break
+    return {"exercise_name": name, "points": points}
 
 
 # ============================================================================

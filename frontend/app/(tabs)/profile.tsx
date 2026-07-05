@@ -18,6 +18,7 @@ export default function ProfileScreen() {
 
   const [goalOpen, setGoalOpen] = useState(false);
   const [healthOpen, setHealthOpen] = useState(false);
+  const [mealsOpen, setMealsOpen] = useState(false);
 
   const [goal, setGoal] = useState(String(user?.calorie_goal ?? 2000));
   const [saving, setSaving] = useState(false);
@@ -158,6 +159,13 @@ export default function ProfileScreen() {
           onPress={() => { setGoal(String(user?.calorie_goal ?? 2000)); setGoalOpen(true); }}
           testID="profile-goal-row"
         />
+        <Row
+          icon="restaurant-outline"
+          label="Nombre de repas par jour"
+          value={`${user?.meals_per_day ?? 4} repas · ~${Math.round((user?.calorie_goal ?? 2000) / (user?.meals_per_day ?? 4))} kcal/repas`}
+          onPress={() => setMealsOpen(true)}
+          testID="profile-meals-row"
+        />
 
         <Text style={styles.section}>Compte</Text>
         <Row icon="mail-outline" label="Email" value={user?.email} />
@@ -239,6 +247,39 @@ export default function ProfileScreen() {
               </Pressable>
             </View>
           </KeyboardAvoidingView>
+        </View>
+      </Modal>
+      {/* Meals per day */}
+      <Modal visible={mealsOpen} transparent animationType="slide" onRequestClose={() => setMealsOpen(false)}>
+        <View style={styles.modalBg}>
+          <View style={styles.modalCard}>
+            <View style={styles.drag} />
+            <Text style={styles.modalTitle}>Nombre de repas par jour</Text>
+            <Text style={styles.rowValue}>
+              Vos {user?.calorie_goal ?? 2000} kcal seront divisées en portions égales.
+            </Text>
+            <View style={[styles.chipsRow, { marginTop: spacing.md }]}>
+              {[2, 3, 4, 5, 6].map((n) => (
+                <Pressable
+                  key={n}
+                  onPress={async () => {
+                    try {
+                      const u = await api.updateMealsPerDay(n);
+                      setUser(u);
+                      setMealsOpen(false);
+                    } catch {}
+                  }}
+                  style={[styles.chip, user?.meals_per_day === n && styles.chipActive]}
+                  testID={`profile-meals-${n}`}
+                >
+                  <Text style={[styles.chipTxt, user?.meals_per_day === n && styles.chipTxtActive]}>{n}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <Pressable onPress={() => setMealsOpen(false)} style={{ alignItems: "center", padding: spacing.md }}>
+              <Text style={{ color: colors.onSurfaceSecondary }}>Fermer</Text>
+            </Pressable>
+          </View>
         </View>
       </Modal>
     </SafeAreaView>

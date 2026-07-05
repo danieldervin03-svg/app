@@ -84,8 +84,11 @@ export default function NutritionScreen() {
     setSuggestLoading(true);
     setSuggestions([]);
     try {
+      // Target ~ 1 meal's share of the daily budget
+      const perMeal = Math.round(goal / (user?.meals_per_day ?? 4));
+      const target = Math.min(remaining || perMeal, perMeal);
       const res = await api.suggestMeals({
-        remaining_calories: remaining,
+        remaining_calories: Math.max(150, target),
         meal_type: suggestType,
         preferences: suggestPref,
       });
@@ -125,6 +128,12 @@ export default function NutritionScreen() {
               <Text style={styles.calSub}>
                 {remaining > 0 ? `Il reste ${remaining} kcal` : `Objectif dépassé de ${consumed - goal} kcal`}
               </Text>
+              <View style={styles.perMealRow}>
+                <Ionicons name="restaurant-outline" size={14} color={colors.onBrandTertiary} />
+                <Text style={styles.perMealTxt}>
+                  {user?.meals_per_day ?? 4} repas/jour · {Math.round(goal / (user?.meals_per_day ?? 4))} kcal/repas
+                </Text>
+              </View>
             </View>
 
             <View style={styles.actionsRow}>
@@ -265,6 +274,13 @@ const styles = StyleSheet.create({
   progressBar: { height: 8, backgroundColor: "rgba(6,95,70,0.15)", borderRadius: radius.pill, overflow: "hidden", marginTop: spacing.md },
   progressFill: { height: "100%", backgroundColor: colors.brandPrimary },
   calSub: { fontSize: font.base, color: colors.onBrandTertiary, marginTop: spacing.sm },
+  perMealRow: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1, borderTopColor: "rgba(55,65,81,0.15)",
+  },
+  perMealTxt: { fontSize: font.sm, color: colors.onBrandTertiary },
   actionsRow: { flexDirection: "row", gap: spacing.md, marginTop: spacing.lg },
   actionBtn: {
     flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm,

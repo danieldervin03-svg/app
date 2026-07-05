@@ -1,0 +1,42 @@
+{
+  "summary": "Iteration 7 backend testing: 76 pytest tests executed, 75 passed (98.7%). All previous 66 tests remain green after updating log-endpoint assertions to unwrap res['workout']. New coverage: 4 meals_per_day tests, 3 exercise-history tests, 3 intelligent-deload tests. One functional bug found in deload logic: when the same exercise_id appears more than once in body.entries of a single POST /workouts/{id}/log call, the deload entry is appended once per duplicate entry instead of at most once per exercise (spec explicitly says 'Deload is only listed once per exercise per log call.'). All other iteration-7 acceptance criteria verified end-to-end: meals_per_day default=4 on register, GET /auth/me includes it, PUT /user/meals-per-day accepts 2-8 and returns 422 otherwise, GET /exercises/history returns {exercise_name, points[]} sorted ASC with case-insensitive name matching and empty points for unknown names, POST /workouts/{id}/log now returns {workout, deloads}, deload triggered on 3rd consecutive echec with new_target = target * 0.9 (rounded 0.5), and streak correctly broken by non-echec difficulty.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/workouts/{id}/log",
+        "issue": "When body.entries contains multiple entries for the SAME exercise_id, the response 'deloads' array contains one deload dict per duplicate entry (2 in test case). Spec says 'Deload is only listed once per exercise per log call.' Root cause: server.py:676-698 iterates body.entries and appends unconditionally; needs a `seen_exercise_ids: set` guard or de-dup after the loop. Also, each duplicate re-multiplies target by 0.9, so target_weight_kg is over-reduced (85.5 then 77.0 in same call)."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Fix deload de-duplication in POST /workouts/{id}/log: guard with a set of already-deloaded exercise_ids inside the loop, or skip entries whose exercise_id is already in `deloads`. Also ensure target_weight_kg is only re-multiplied by 0.9 once per exercise per log call. Reference: /app/backend/server.py:676-698."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 1313 lines — approaching the 700-line guideline. Consider splitting routers by domain (auth, workouts, meals, measurements, coach, adaptive) into separate modules.",
+    "Deload guard missing — same as above.",
+    "GET /api/exercises/history returns exercise_name = input string (lower/original as sent) rather than the canonical stored name. Minor UX inconsistency; acceptable but worth noting."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py"
+  ],
+  "success_rate": {
+    "backend": "98.7% (75/76)",
+    "frontend": "not tested (backend-only request)"
+  },
+  "seed_data_creation": "Multiple TEST_iter7_* users created via /api/auth/register. Test workouts and session logs prefixed TEST_iter7 for easy cleanup. No modifications to seed user test@bp.com.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "backend_test.py now has 76 tests total. Iteration 7 additions: TestMealsPerDay (4), TestExerciseHistory (3), TestDeload (3). Existing log-endpoint tests in TestProgramAndLog were updated to unwrap res['workout'] since return shape changed to {workout, deloads}. All 66 previous tests remain green. Only failure is test_deload_only_once_per_exercise_per_log — this is a real backend bug, not a test issue.",
+  "rca_of_issue": "server.py POST /workouts/{workout_id}/log lines 676-698: The loop `for entry in body.entries` computes streak & appends deload without checking if the exercise_id already had a deload appended in this call. When a client posts duplicate entries for the same exercise (rare but possible in UI double-submit), the deload is emitted twice and target_weight_kg is multiplied by 0.9 twice. Reproduction: POST log with entries=[{exercise_id: X, difficulty: 'echec'}, {exercise_id: X, difficulty: 'echec'}] after two prior echec logs → deloads list length = 2. Fix: introduce `deloaded_ids: set[str] = set()`; inside the deload branch check `if entry.exercise_id in deloaded_ids: continue`, otherwise `deloaded_ids.add(entry.exercise_id)` before append."
+}
