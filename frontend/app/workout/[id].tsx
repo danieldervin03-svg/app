@@ -34,6 +34,7 @@ export default function WorkoutDetail() {
   const [name, setName] = useState("");
   const [sets, setSets] = useState("");
   const [reps, setReps] = useState("");
+  const [weight, setWeightField] = useState("");
   const [rest, setRest] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
@@ -49,12 +50,13 @@ export default function WorkoutDetail() {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const openAdd = () => {
-    setEditing(null); setName(""); setSets("3"); setReps("10"); setRest("60"); setNotes("");
+    setEditing(null); setName(""); setSets("3"); setReps("10"); setWeightField(""); setRest("60"); setNotes("");
     setEditOpen(true);
   };
   const openEdit = (ex: Exercise) => {
     setEditing(ex);
     setName(ex.name); setSets(String(ex.sets)); setReps(ex.reps);
+    setWeightField(ex.target_weight_kg != null ? String(ex.target_weight_kg) : "");
     setRest(String(ex.rest_seconds)); setNotes(ex.notes);
     setEditOpen(true);
   };
@@ -63,6 +65,7 @@ export default function WorkoutDetail() {
     if (!workout) return;
     if (!name.trim()) return;
     setSaving(true);
+    const parsedWeight = parseFloat(weight.replace(",", "."));
     const next: Exercise = {
       id: editing?.id ?? Math.random().toString(36).slice(2),
       name: name.trim(),
@@ -70,6 +73,11 @@ export default function WorkoutDetail() {
       reps: reps.trim() || "10",
       rest_seconds: parseInt(rest, 10) || 60,
       notes: notes.trim(),
+      target_weight_kg: Number.isFinite(parsedWeight) && parsedWeight > 0 ? parsedWeight : null,
+      // preserve progression history when editing
+      last_difficulty: editing?.last_difficulty ?? null,
+      last_weight_kg: editing?.last_weight_kg ?? null,
+      last_reps_done: editing?.last_reps_done ?? null,
     };
     const updated = editing
       ? workout.exercises.map((e) => (e.id === editing.id ? next : e))
@@ -291,6 +299,11 @@ export default function WorkoutDetail() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Input label="Reps" value={reps} onChangeText={setReps} testID="ex-reps-input" />
+                </View>
+              </View>
+              <View style={{ flexDirection: "row", gap: spacing.md }}>
+                <View style={{ flex: 1 }}>
+                  <Input label="Poids (kg)" keyboardType="decimal-pad" value={weight} onChangeText={setWeightField} testID="ex-weight-input" placeholder="—" />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Input label="Repos (s)" keyboardType="numeric" value={rest} onChangeText={setRest} testID="ex-rest-input" />

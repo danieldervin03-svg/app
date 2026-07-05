@@ -128,11 +128,11 @@ export default function NutritionScreen() {
     setSuggestLoading(true);
     setSuggestions([]);
     try {
-      // Target ~ 1 meal's share of the daily budget
+      // Toujours utiliser la portion par repas définie par le profil,
+      // indépendamment des calories déjà consommées dans la journée.
       const perMeal = Math.round(goal / (user?.meals_per_day ?? 4));
-      const target = Math.min(remaining || perMeal, perMeal);
       const res = await api.suggestMeals({
-        remaining_calories: Math.max(150, target),
+        remaining_calories: Math.max(150, perMeal),
         meal_type: suggestType,
         preferences: suggestPref,
       });
@@ -287,7 +287,7 @@ export default function NutritionScreen() {
             <View style={[styles.modalCard, { maxHeight: "85%" }]}>
               <View style={styles.dragHandle} />
               <Text style={styles.modalTitle}>Idées repas IA</Text>
-              <Text style={styles.modalSub}>{`Calories restantes aujourd'hui : ${remaining} kcal`}</Text>
+              <Text style={styles.modalSub}>{`Cible : ~${Math.round(goal / (user?.meals_per_day ?? 4))} kcal par repas (basé sur votre profil)`}</Text>
 
               <Text style={styles.subLabel}>Type</Text>
               <View style={styles.chipsRow}>
