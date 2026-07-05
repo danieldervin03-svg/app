@@ -48,6 +48,8 @@ export type User = {
   name: string;
   calorie_goal: number;
   calorie_goal_auto: boolean;
+  calorie_last_adjust_at: string | null;
+  calorie_last_adjust_reason: string | null;
   sex: "homme" | "femme" | null;
   age: number | null;
   height_cm: number | null;
@@ -55,6 +57,20 @@ export type User = {
   activity_level: "sédentaire" | "léger" | "modéré" | "actif" | "très actif" | null;
   fitness_goal: "prise de masse" | "sèche" | "maintien" | null;
   created_at: string;
+};
+
+export type CalorieRecommendation = {
+  applicable: boolean;
+  reason?: string;
+  current_goal: number;
+  suggested_goal: number;
+  delta_kcal?: number;
+  weekly_change_kg: number | null;
+  span_days: number | null;
+  status: string;
+  should_adjust?: boolean;
+  target_range_kg_per_week?: [number, number];
+  last_adjusted_at: string | null;
 };
 
 export type ProfileInput = {
@@ -152,6 +168,13 @@ export const api = {
     request<User>("/user/calorie-goal", { method: "PUT", body: { calorie_goal } }),
   updateProfile: (body: ProfileInput) =>
     request<User>("/user/profile", { method: "PUT", body }),
+  calorieRecommendation: () =>
+    request<CalorieRecommendation>("/user/calorie-recommendation"),
+  applyCalorieRecommendation: () =>
+    request<{ applied: boolean; new_goal?: number; delta_kcal?: number; reason: string; weekly_change_kg?: number }>(
+      "/user/calorie-recommendation/apply",
+      { method: "POST" },
+    ),
 
   // Workouts
   listWorkouts: () => request<Workout[]>("/workouts"),

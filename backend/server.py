@@ -68,6 +68,8 @@ class UserPublic(BaseModel):
     name: str
     calorie_goal: int = 2000
     calorie_goal_auto: bool = True  # true = recomputed from profile; false = manual override
+    calorie_last_adjust_at: Optional[str] = None
+    calorie_last_adjust_reason: Optional[str] = None
     sex: Optional[Literal["homme", "femme"]] = None
     age: Optional[int] = None
     height_cm: Optional[float] = None
@@ -255,6 +257,8 @@ def public_user(u: dict) -> UserPublic:
         name=u["name"],
         calorie_goal=u.get("calorie_goal", 2000),
         calorie_goal_auto=u.get("calorie_goal_auto", True),
+        calorie_last_adjust_at=u.get("calorie_last_adjust_at"),
+        calorie_last_adjust_reason=u.get("calorie_last_adjust_reason"),
         sex=u.get("sex"),
         age=u.get("age"),
         height_cm=u.get("height_cm"),
@@ -335,6 +339,8 @@ async def update_profile(body: ProfileUpdate, user: dict = Depends(get_current_u
     # Always recompute when profile changes; user can still override afterwards via /calorie-goal
     updates["calorie_goal"] = computed
     updates["calorie_goal_auto"] = True
+    updates["calorie_last_adjust_at"] = None
+    updates["calorie_last_adjust_reason"] = None
     await db.users.update_one({"id": user["id"]}, {"$set": updates})
     updated = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password_hash": 0})
     return public_user(updated)
@@ -550,6 +556,12 @@ async def list_measurements(user: dict = Depends(get_current_user)):
 async def create_measurement(body: MeasurementCreate, user: dict = Depends(get_current_user)):
     m = Measurement(user_id=user["id"], **body.model_dump())
     await db.measurements.insert_one(m.model_dump())
+    # Trigger adaptive calorie adjustment if a weight was provided
+    if body.weight_kg is not None:
+        try:
+            await _maybe_apply_adaptive_calories(user["id"])
+        except Exception as e:
+            logger.warning("adaptive calorie adjust failed: %s", e)
     return m
 
 
@@ -559,6 +571,222 @@ async def delete_measurement(mid: str, user: dict = Depends(get_current_user)):
     if res.deleted_count == 0:
         raise HTTPException(404, "Mesure introuvable")
     return {"ok": True}
+
+
+# ============================================================================
+# Adaptive calorie recommendation (based on weekly weight progress)
+# ============================================================================
+
+# Expected weekly weight change per goal (kg/week)
+GOAL_TARGET_KG_PER_WEEK = {
+    "prise de masse": (0.2, 0.5),     # min, max healthy range
+    "sèche": (-0.7, -0.4),
+    "maintien": (-0.2, 0.2),
+}
+
+CAL_ADJUST_STEP = 150  # kcal adjustment per re-evaluation
+CAL_MIN = 1200
+CAL_MAX = 5000
+ADJUST_COOLDOWN_DAYS = 7  # do not auto-adjust more often than this
+
+
+async def _weekly_weight_change(user_id: str) -> Optional[dict]:
+    """Return {change_kg_per_week, span_days, first_weight, last_weight, points} or None if insufficient data.
+    Uses weight measurements from last 28 days, requires at least 2 spanning >= 7 days."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=28)
+    docs = await db.measurements.find(
+        {"user_id": user_id, "weight_kg": {"$ne": None}},
+        {"_id": 0},
+    ).sort("created_at", 1).to_list(200)
+
+    weighed = []
+    for d in docs:
+        try:
+            dt = datetime.fromisoformat(d["created_at"].replace("Z", "+00:00"))
+        except Exception:
+            continue
+        if dt >= cutoff and d.get("weight_kg") is not None:
+            weighed.append((dt, float(d["weight_kg"])))
+
+    if len(weighed) < 2:
+        return None
+
+    first_dt, first_w = weighed[0]
+    last_dt, last_w = weighed[-1]
+    span_days = (last_dt - first_dt).total_seconds() / 86400.0
+    if span_days < 7:
+        return None
+
+    change_per_week = (last_w - first_w) / span_days * 7.0
+    return {
+        "change_kg_per_week": round(change_per_week, 2),
+        "span_days": round(span_days, 1),
+        "first_weight": first_w,
+        "last_weight": last_w,
+        "points": len(weighed),
+    }
+
+
+def _decide_calorie_adjustment(fitness_goal: str, change_kg_per_week: float, current_goal: int) -> dict:
+    """Return {should_adjust, delta_kcal, new_goal, reason, status}."""
+    rng = GOAL_TARGET_KG_PER_WEEK.get(fitness_goal)
+    if not rng:
+        return {"should_adjust": False, "delta_kcal": 0, "new_goal": current_goal,
+                "reason": "Objectif non défini", "status": "unknown"}
+    lo, hi = rng
+    delta = 0
+    prog_status = "on_track"
+    reason = "Vous progressez comme prévu. Continuez ainsi."
+
+    if fitness_goal == "prise de masse":
+        if change_kg_per_week < lo:
+            delta = +CAL_ADJUST_STEP
+            prog_status = "below"
+            reason = f"Progression trop lente ({change_kg_per_week:+.2f} kg/sem). Ajout de {CAL_ADJUST_STEP} kcal pour relancer la prise."
+        elif change_kg_per_week > hi:
+            delta = -CAL_ADJUST_STEP
+            prog_status = "above"
+            reason = f"Prise trop rapide ({change_kg_per_week:+.2f} kg/sem). Réduction de {CAL_ADJUST_STEP} kcal pour limiter la prise de gras."
+    elif fitness_goal == "sèche":
+        # negative range: lo=-0.7 (fast), hi=-0.4 (slow)
+        if change_kg_per_week > hi:  # not losing enough
+            delta = -CAL_ADJUST_STEP
+            prog_status = "below"  # goal progression below target
+            reason = f"Perte insuffisante ({change_kg_per_week:+.2f} kg/sem). Réduction de {CAL_ADJUST_STEP} kcal."
+        elif change_kg_per_week < lo:  # losing too fast
+            delta = +CAL_ADJUST_STEP
+            prog_status = "above"
+            reason = f"Perte trop rapide ({change_kg_per_week:+.2f} kg/sem). Ajout de {CAL_ADJUST_STEP} kcal pour protéger la masse musculaire."
+    elif fitness_goal == "maintien":
+        if change_kg_per_week > hi:
+            delta = -CAL_ADJUST_STEP
+            prog_status = "above"
+            reason = f"Prise de poids inattendue ({change_kg_per_week:+.2f} kg/sem). Réduction de {CAL_ADJUST_STEP} kcal."
+        elif change_kg_per_week < lo:
+            delta = +CAL_ADJUST_STEP
+            prog_status = "below"
+            reason = f"Perte inattendue ({change_kg_per_week:+.2f} kg/sem). Ajout de {CAL_ADJUST_STEP} kcal."
+
+    new_goal = max(CAL_MIN, min(CAL_MAX, current_goal + delta))
+    if new_goal == current_goal:
+        delta = 0
+    return {
+        "should_adjust": delta != 0,
+        "delta_kcal": delta,
+        "new_goal": new_goal,
+        "reason": reason,
+        "status": prog_status,
+    }
+
+
+async def _maybe_apply_adaptive_calories(user_id: str) -> Optional[dict]:
+    """Apply calorie adjustment if user has auto-goal, fitness_goal set, enough data, and cooldown respected."""
+    user = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    if not user:
+        return None
+    if not user.get("calorie_goal_auto", True):
+        return None
+    fitness_goal = user.get("fitness_goal")
+    if not fitness_goal:
+        return None
+
+    # cooldown
+    last_ts = user.get("calorie_last_adjust_at")
+    if last_ts:
+        try:
+            last_dt = datetime.fromisoformat(str(last_ts).replace("Z", "+00:00"))
+            if (datetime.now(timezone.utc) - last_dt).days < ADJUST_COOLDOWN_DAYS:
+                return None
+        except Exception:
+            pass
+
+    stats = await _weekly_weight_change(user_id)
+    if not stats:
+        return None
+
+    decision = _decide_calorie_adjustment(fitness_goal, stats["change_kg_per_week"], int(user.get("calorie_goal", 2000)))
+    if not decision["should_adjust"]:
+        return None
+
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {
+            "calorie_goal": decision["new_goal"],
+            "calorie_goal_auto": True,
+            "calorie_last_adjust_at": now_utc(),
+            "calorie_last_adjust_reason": decision["reason"],
+        }},
+    )
+    return {**decision, "weekly_change_kg": stats["change_kg_per_week"]}
+
+
+@api.get("/user/calorie-recommendation")
+async def calorie_recommendation(user: dict = Depends(get_current_user)):
+    """Preview the adaptive recommendation without applying it."""
+    fitness_goal = user.get("fitness_goal")
+    current_goal = int(user.get("calorie_goal", 2000))
+    stats = await _weekly_weight_change(user["id"])
+    if not fitness_goal:
+        return {
+            "applicable": False,
+            "reason": "Renseignez votre profil santé pour activer les ajustements adaptatifs.",
+            "current_goal": current_goal,
+            "suggested_goal": current_goal,
+            "weekly_change_kg": None,
+            "span_days": None,
+            "status": "no_profile",
+            "last_adjusted_at": user.get("calorie_last_adjust_at"),
+        }
+    if not stats:
+        return {
+            "applicable": False,
+            "reason": "Ajoutez au moins 2 mesures de poids séparées d'au moins 7 jours.",
+            "current_goal": current_goal,
+            "suggested_goal": current_goal,
+            "weekly_change_kg": None,
+            "span_days": None,
+            "status": "insufficient_data",
+            "last_adjusted_at": user.get("calorie_last_adjust_at"),
+        }
+    decision = _decide_calorie_adjustment(fitness_goal, stats["change_kg_per_week"], current_goal)
+    return {
+        "applicable": True,
+        "current_goal": current_goal,
+        "suggested_goal": decision["new_goal"],
+        "delta_kcal": decision["delta_kcal"],
+        "weekly_change_kg": stats["change_kg_per_week"],
+        "span_days": stats["span_days"],
+        "reason": decision["reason"],
+        "status": decision["status"],
+        "should_adjust": decision["should_adjust"],
+        "target_range_kg_per_week": GOAL_TARGET_KG_PER_WEEK[fitness_goal],
+        "last_adjusted_at": user.get("calorie_last_adjust_at"),
+    }
+
+
+@api.post("/user/calorie-recommendation/apply")
+async def apply_calorie_recommendation(user: dict = Depends(get_current_user)):
+    """Force-apply the current adaptive recommendation (bypasses cooldown)."""
+    fitness_goal = user.get("fitness_goal")
+    if not fitness_goal:
+        raise HTTPException(400, "Profil santé incomplet")
+    stats = await _weekly_weight_change(user["id"])
+    if not stats:
+        raise HTTPException(400, "Pas assez de mesures de poids")
+    decision = _decide_calorie_adjustment(fitness_goal, stats["change_kg_per_week"], int(user.get("calorie_goal", 2000)))
+    if not decision["should_adjust"]:
+        return {"applied": False, "reason": decision["reason"], "current_goal": user.get("calorie_goal")}
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {
+            "calorie_goal": decision["new_goal"],
+            "calorie_goal_auto": True,
+            "calorie_last_adjust_at": now_utc(),
+            "calorie_last_adjust_reason": decision["reason"],
+        }},
+    )
+    return {"applied": True, "new_goal": decision["new_goal"], "delta_kcal": decision["delta_kcal"],
+            "reason": decision["reason"], "weekly_change_kg": stats["change_kg_per_week"]}
 
 
 # ============================================================================

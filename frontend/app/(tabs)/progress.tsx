@@ -5,7 +5,8 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, font, radius, spacing } from "@/src/theme";
 import { Button, Input, EmptyState } from "@/src/components/ui";
-import { api, HistoryStats, Measurement } from "@/src/api";
+import { api, CalorieRecommendation, HistoryStats, Measurement } from "@/src/api";
+import { useAuth } from "@/src/auth";
 
 function WeightChart({ data }: { data: Measurement[] }) {
   const points = data.filter((d) => typeof d.weight_kg === "number").slice(-14);
@@ -39,8 +40,11 @@ function WeightChart({ data }: { data: Measurement[] }) {
 
 export default function ProgressScreen() {
   const router = useRouter();
+  const { refresh } = useAuth();
   const [items, setItems] = useState<Measurement[]>([]);
   const [stats, setStats] = useState<HistoryStats | null>(null);
+  const [reco, setReco] = useState<CalorieRecommendation | null>(null);
+  const [applyingReco, setApplyingReco] = useState(false);
   const [open, setOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [weight, setWeight] = useState("");
@@ -55,9 +59,14 @@ export default function ProgressScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [list, s] = await Promise.all([api.listMeasurements(), api.historyStats()]);
+      const [list, s, r] = await Promise.all([
+        api.listMeasurements(),
+        api.historyStats(),
+        api.calorieRecommendation().catch(() => null),
+      ]);
       setItems(list);
       setStats(s);
+      setReco(r);
     } catch {}
   }, []);
 
@@ -97,11 +106,22 @@ export default function ProgressScreen() {
       setWeight(""); setChest(""); setWaist(""); setHips(""); setArm(""); setThigh(""); setNote("");
       setOpen(false);
       await load();
+      await refresh(); // in case backend auto-adjusted calorie_goal
     } catch (e: any) {
       setError(e.message);
     } finally {
       setSaving(false);
     }
+  };
+
+  const applyReco = async () => {
+    setApplyingReco(true);
+    try {
+      await api.applyCalorieRecommendation();
+      await refresh();
+      await load();
+    } catch {}
+    setApplyingReco(false);
   };
 
   const delItem = async (id: string) => {
@@ -189,6 +209,53 @@ export default function ProgressScreen() {
         ) : null}
 
         <Text style={styles.sectionH}>Évolution du poids</Text>
+        {reco && (reco.applicable || reco.status === "insufficient_data") ? (
+          <View
+            style={[
+              styles.recoCard,
+              reco.should_adjust ? styles.recoCardWarn : styles.recoCardOk,
+            ]}
+            testID="calorie-reco-card"
+          >
+            <View style={styles.recoHeader}>
+              <View style={[styles.recoIcon, reco.should_adjust ? { backgroundColor: colors.warning } : { backgroundColor: colors.brandPrimary }]}>
+                <Ionicons
+                  name={reco.should_adjust ? "trending-up" : "checkmark"}
+                  size={16}
+                  color={colors.onBrandPrimary}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.recoTitle}>Ajustement calorique adaptatif</Text>
+                <Text style={styles.recoSub}>
+                  {reco.weekly_change_kg != null
+                    ? `${reco.weekly_change_kg >= 0 ? "+" : ""}${reco.weekly_change_kg} kg/sem sur ${reco.span_days} j`
+                    : (reco.reason ?? "")}
+                </Text>
+              </View>
+            </View>
+            {reco.applicable ? (
+              <Text style={styles.recoReason}>{reco.reason}</Text>
+            ) : null}
+            {reco.should_adjust ? (
+              <View style={styles.recoActions}>
+                <View style={styles.recoGoal}>
+                  <Text style={styles.recoOld}>{reco.current_goal}</Text>
+                  <Ionicons name="arrow-forward" size={14} color={colors.onSurfaceSecondary} />
+                  <Text style={styles.recoNew}>{reco.suggested_goal} kcal</Text>
+                </View>
+                <Pressable
+                  onPress={applyReco}
+                  disabled={applyingReco}
+                  style={[styles.recoBtn, applyingReco && { opacity: 0.5 }]}
+                  testID="calorie-reco-apply"
+                >
+                  <Text style={styles.recoBtnTxt}>{applyingReco ? "…" : "Appliquer"}</Text>
+                </Pressable>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
         <WeightChart data={items} />
 
         <Text style={styles.sectionH}>Mesures</Text>
@@ -310,6 +377,26 @@ const styles = StyleSheet.create({
     alignItems: "center", justifyContent: "center", padding: spacing.md,
   },
   chartEmptyTxt: { color: colors.onSurfaceSecondary, textAlign: "center" },
+  recoCard: {
+    borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.md,
+    borderWidth: 1,
+  },
+  recoCardOk: { backgroundColor: colors.brandTertiary, borderColor: colors.brandSecondary },
+  recoCardWarn: { backgroundColor: "#FEF3C7", borderColor: colors.warning },
+  recoHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.sm },
+  recoIcon: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  recoTitle: { fontSize: font.base, color: colors.onSurface, fontWeight: "500" },
+  recoSub: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginTop: 2 },
+  recoReason: { fontSize: font.sm, color: colors.onSurface, marginBottom: spacing.sm, lineHeight: 18 },
+  recoActions: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  recoGoal: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  recoOld: { fontSize: font.base, color: colors.onSurfaceSecondary, textDecorationLine: "line-through" },
+  recoNew: { fontSize: font.lg, color: colors.brandPrimary, fontWeight: "500" },
+  recoBtn: {
+    backgroundColor: colors.brandPrimary, paddingHorizontal: spacing.md, paddingVertical: 8,
+    borderRadius: radius.pill,
+  },
+  recoBtnTxt: { color: colors.onBrandPrimary, fontSize: font.sm, fontWeight: "500" },
   row: {
     flexDirection: "row", alignItems: "flex-start", gap: spacing.md,
     padding: spacing.md, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, marginBottom: spacing.sm,

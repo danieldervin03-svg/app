@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 4 (adaptive calorie adjustment) fully validated. Backend pytest suite extended from 31 → 50 tests (+19 new tests in TestCalorieRecommendation). 50/50 PASS in 28.99s. Coverage: GET /api/user/calorie-recommendation (no_profile / insufficient_data / below / above / on_track for prise de masse, sèche, maintien) ; POST /api/user/calorie-recommendation/apply (applied True/False, 400 errors) ; auto-adjust on POST /api/measurements ; 7-day cooldown blocks re-adjust ; PUT /api/user/profile resets calorie_last_adjust_at/reason to None ; GET /api/auth/me exposes calorie_last_adjust_at + calorie_last_adjust_reason ; bounds [1200, 5000]. Sèche 'protecting muscle mass' branch verified (change < -0.7 kg/w → +150 kcal, reason contains 'protéger la masse musculaire'). Seed user test@bp.com: current calorie_goal=3230 (base 3080 + 1 previous auto-adjust +150), 2 measurements 14d apart (75.0→75.1) → GET reco returns applicable=true, status=below, weekly_change=+0.05 kg/sem, delta_kcal=+150, suggested_goal=3380 (matches problem statement expectation). Note: problem statement said 'currently 3380 kcal after 2 auto-adjustments' but DB shows 3230 (only 1 adjust applied); non-blocking. Regression: all 31 tests from iterations 1-3 remain green.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "Seed user state vs spec", "issue": "Description says 'currently 3380 kcal after 2 auto-adjustments' but DB shows calorie_goal=3230 (base 3080 + 1 auto-adjust of +150). Reco endpoint would legitimately push to 3380 via /apply since cooldown last_adjust_at=2026-07-05 is >7d ago. Reality: only 1 auto-adjust happened during seed setup. Non-blocking; documentation drift only."},
+      {"endpoint": "GET /api/auth/me sans token", "issue": "Still returns 403 (HTTPBearer default) instead of 401 – inherited from iter 1, non-blocking."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(LOW) Optional: run the seed script once more or /apply the reco once so seed user reaches the announced 3380 kcal 'after 2 auto-adjustments' state — cosmetic, not a bug.",
+    "(LOW) Carried over: return 401 instead of 403 when Authorization header missing (customize HTTPBearer)."
+  ],
+  "critical_code_review_comments": [
+    "_weekly_weight_change (server.py:593) uses last 28 days window and requires ≥2 points + ≥7d span — matches spec; rounds change_per_week to 2 decimals which keeps API output tidy.",
+    "_decide_calorie_adjustment correctly maps sèche 'change < lo (-0.7)' to +150 with 'protéger la masse musculaire' reason (server.py:656-659) — spec-compliant.",
+    "Bounds clamp via max(CAL_MIN, min(CAL_MAX, current+delta)) then delta=0 when new_goal==current_goal (server.py:670-672) — prevents no-op adjustments from being reported as should_adjust=true.",
+    "_maybe_apply_adaptive_calories cooldown uses (now - last_dt).days < 7 (server.py:698) — strict <7 comparison, so exactly 7-day-old adjust unlocks; matches 'cooldown of 7 days respected'.",
+    "PUT /user/profile explicitly sets calorie_last_adjust_at/reason to None (server.py:342-343) — good, resets baseline as required.",
+    "POST /measurements wraps _maybe_apply_adaptive_calories in try/except (server.py:562-564) — good, weight save cannot be broken by adjust bug.",
+    "server.py is now 1032 lines — becoming large. Recommend splitting into modules (auth, profile, workouts, meals, measurements, coach, adaptive) at next iteration.",
+    "GOAL_TARGET_KG_PER_WEEK constants defined at module level with clear comments — clean.",
+    "Response shape from GET /user/calorie-recommendation includes 'target_range_kg_per_week' as a 2-tuple; FastAPI serializes it as a JSON array [lo, hi] — verified in tests."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py"],
+  "success_rate": {"backend": "100% (50/50)", "frontend": "not tested (backend-only iteration per request)"},
+  "seed_data_creation": "~15 fresh TEST_iter4_* users registered via /api/auth/register with backdated measurements inserted directly into MongoDB (id prefixed with 'TEST_iter4' or note='TEST_iter4' in measurements). No cleanup performed (matches previous iteration pattern).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration 4 adaptive calorie fully green. Test file /app/backend/tests/backend_test.py now has 50 tests. New TestCalorieRecommendation class covers: GET /api/user/calorie-recommendation (statuses: no_profile, insufficient_data, below, above, on_track), POST /api/user/calorie-recommendation/apply (applied True/False, 400 errors), auto-adjust trigger on POST /api/measurements with 7-day cooldown, PUT /api/user/profile reset of adjust fields, bounds [1200, 5000]. Tests use pymongo directly to backdate measurement created_at (API always uses server-side now_utc). New helper functions at end of test file: _register_user, _h, _set_profile, _insert_measurement_backdated. Backend endpoints for iter 4: GET /api/user/calorie-recommendation, POST /api/user/calorie-recommendation/apply. UserPublic now exposes calorie_last_adjust_at and calorie_last_adjust_reason. Cooldown is strict <7 days (day boundary inclusive). Seed user test@bp.com currently at calorie_goal=3230 with adjust timestamp 2026-07-05; the seed 'after 2 auto-adjustments' target of 3380 requires one more /apply call on the seed user."
+}

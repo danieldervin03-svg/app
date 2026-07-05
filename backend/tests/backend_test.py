@@ -433,3 +433,284 @@ class TestProfile:
         r = s.put(f"{API}/user/profile", json={"sex": "homme", "age": 30, "height_cm": 180,
              "weight_kg": 75, "activity_level": "modéré", "fitness_goal": "prise de masse"}, timeout=15)
         assert r.status_code in (401, 403)
+
+
+# ---------------- Adaptive calorie adjustment (NEW iteration 4) ----------------
+# These tests use a direct MongoDB connection to backdate measurements
+# (the API always inserts with server-side created_at = now).
+from datetime import datetime, timezone, timedelta  # noqa: E402
+from pymongo import MongoClient  # noqa: E402
+from dotenv import load_dotenv  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+load_dotenv(Path(__file__).parent.parent / ".env")
+_MONGO = MongoClient(os.environ["MONGO_URL"])
+_DB = _MONGO[os.environ["DB_NAME"]]
+
+
+def _register_user(s):
+    email = f"TEST_iter4_{uuid.uuid4().hex[:8]}@bp.com"
+    r = s.post(f"{API}/auth/register", json={"email": email, "password": "abcdef", "name": "TEST iter4"}, timeout=15)
+    assert r.status_code == 200, r.text
+    return r.json()["token"], r.json()["user"], email
+
+
+def _h(token):
+    return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+
+def _set_profile(s, token, goal="prise de masse", weight_kg=75.0):
+    body = {"sex": "homme", "age": 30, "height_cm": 180, "weight_kg": weight_kg,
+            "activity_level": "modéré", "fitness_goal": goal}
+    r = s.put(f"{API}/user/profile", headers=_h(token), json=body, timeout=15)
+    assert r.status_code == 200
+    return r.json()
+
+
+def _insert_measurement_backdated(user_id: str, weight_kg: float, days_ago: float):
+    """Insert a measurement bypassing the API so we can backdate created_at."""
+    ts = (datetime.now(timezone.utc) - timedelta(days=days_ago)).isoformat()
+    _DB.measurements.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "weight_kg": weight_kg,
+        "chest_cm": None, "waist_cm": None, "hips_cm": None,
+        "arm_cm": None, "thigh_cm": None, "note": "TEST_iter4",
+        "created_at": ts,
+    })
+
+
+class TestCalorieRecommendation:
+    def test_me_exposes_new_adjust_fields(self, s, auth):
+        r = s.get(f"{API}/auth/me", headers=auth, timeout=15)
+        assert r.status_code == 200
+        data = r.json()
+        assert "calorie_last_adjust_at" in data
+        assert "calorie_last_adjust_reason" in data
+
+    def test_reco_no_profile(self, s):
+        token, _, _ = _register_user(s)
+        r = s.get(f"{API}/user/calorie-recommendation", headers=_h(token), timeout=15)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d["applicable"] is False
+        assert d["status"] == "no_profile"
+        assert d["current_goal"] == 2000
+        assert d["suggested_goal"] == 2000
+        assert d["weekly_change_kg"] is None
+        assert d["span_days"] is None
+
+    def test_reco_insufficient_data_no_measurement(self, s):
+        token, _, _ = _register_user(s)
+        _set_profile(s, token)
+        r = s.get(f"{API}/user/calorie-recommendation", headers=_h(token), timeout=15)
+        d = r.json()
+        assert d["applicable"] is False
+        assert d["status"] == "insufficient_data"
+
+    def test_reco_insufficient_data_span_less_than_7_days(self, s):
+        token, u, _ = _register_user(s)
+        _set_profile(s, token)
+        # Two measurements only 3 days apart via backdating
+        _insert_measurement_backdated(u["id"], 75.0, days_ago=3)
+        _insert_measurement_backdated(u["id"], 75.3, days_ago=0)
+        r = s.get(f"{API}/user/calorie-recommendation", headers=_h(token), timeout=15)
+        d = r.json()
+        assert d["applicable"] is False
+        assert d["status"] == "insufficient_data"
+
+    def test_reco_seed_user_prise_de_masse_below(self, s, auth):
+        """Seed user has 2 measurements 14d apart (75.0 → 75.1) = ~0.05 kg/week < 0.2 (below range)."""
+        r = s.get(f"{API}/user/calorie-recommendation", headers=auth, timeout=15)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d["applicable"] is True
+        assert d["status"] == "below"
+        assert d["should_adjust"] is True
+        assert d["delta_kcal"] == 150
+        assert d["weekly_change_kg"] == 0.05
+        assert 13.5 <= d["span_days"] <= 14.5
+        assert d["target_range_kg_per_week"] == [0.2, 0.5]
+        assert d["suggested_goal"] == d["current_goal"] + 150
+        assert "Progression trop lente" in d["reason"]
+
+    def test_reco_prise_de_masse_on_track(self, s):
+        """Weekly gain within [0.2, 0.5] → on_track, should_adjust=false."""
+        token, u, _ = _register_user(s)
+        _set_profile(s, token)  # base 3080 for prise de masse
+        _insert_measurement_backdated(u["id"], 75.0, days_ago=14)
+        _insert_measurement_backdated(u["id"], 75.6, days_ago=0)  # +0.6 in 14d = +0.3/w
+        r = s.get(f"{API}/user/calorie-recommendation", headers=_h(token), timeout=15)
+        d = r.json()
+        assert d["applicable"] is True
+        assert d["status"] == "on_track"
+        assert d["should_adjust"] is False
+        assert d["delta_kcal"] == 0
+        assert d["suggested_goal"] == d["current_goal"]
+
+    def test_reco_prise_de_masse_above(self, s):
+        """Weekly gain > 0.5 → above, delta -150."""
+        token, u, _ = _register_user(s)
+        _set_profile(s, token)
+        _insert_measurement_backdated(u["id"], 75.0, days_ago=14)
+        _insert_measurement_backdated(u["id"], 77.0, days_ago=0)  # +2 kg in 14d = +1/w
+        r = s.get(f"{API}/user/calorie-recommendation", headers=_h(token), timeout=15)
+        d = r.json()
+        assert d["status"] == "above"
+        assert d["delta_kcal"] == -150
+        assert d["should_adjust"] is True
+
+    def test_reco_seche_losing_too_fast_protects_muscle(self, s):
+        """Sèche: weekly change < -0.7 (too fast) → +150 (protect muscle mass)."""
+        token, u, _ = _register_user(s)
+        _set_profile(s, token, goal="sèche")
+        _insert_measurement_backdated(u["id"], 75.0, days_ago=14)
+        _insert_measurement_backdated(u["id"], 73.0, days_ago=0)  # -2 kg in 14d = -1/w
+        r = s.get(f"{API}/user/calorie-recommendation", headers=_h(token), timeout=15)
+        d = r.json()
+        assert d["status"] == "above"  # backend labels 'too fast loss' as 'above' target severity
+        assert d["delta_kcal"] == 150
+        assert "protéger la masse musculaire" in d["reason"]
+
+    def test_reco_seche_not_losing_enough(self, s):
+        """Sèche: weekly change > -0.4 (too slow loss) → -150."""
+        token, u, _ = _register_user(s)
+        _set_profile(s, token, goal="sèche")
+        _insert_measurement_backdated(u["id"], 75.0, days_ago=14)
+        _insert_measurement_backdated(u["id"], 74.9, days_ago=0)  # -0.05/w only
+        r = s.get(f"{API}/user/calorie-recommendation", headers=_h(token), timeout=15)
+        d = r.json()
+        assert d["status"] == "below"
+        assert d["delta_kcal"] == -150
+
+    def test_reco_maintien_stable(self, s):
+        token, u, _ = _register_user(s)
+        _set_profile(s, token, goal="maintien")
+        _insert_measurement_backdated(u["id"], 75.0, days_ago=14)
+        _insert_measurement_backdated(u["id"], 75.1, days_ago=0)  # +0.05/w within [-0.2, +0.2]
+        r = s.get(f"{API}/user/calorie-recommendation", headers=_h(token), timeout=15)
+        d = r.json()
+        assert d["status"] == "on_track"
+        assert d["should_adjust"] is False
+
+    def test_apply_reco_updates_user_goal_and_reason(self, s):
+        token, u, _ = _register_user(s)
+        _set_profile(s, token)  # 3080
+        _insert_measurement_backdated(u["id"], 75.0, days_ago=14)
+        _insert_measurement_backdated(u["id"], 75.05, days_ago=0)  # very slow ~0.025/w
+        # Apply
+        r = s.post(f"{API}/user/calorie-recommendation/apply", headers=_h(token), timeout=15)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d["applied"] is True
+        assert d["new_goal"] == 3080 + 150
+        assert d["delta_kcal"] == 150
+        # /me now returns updated goal + reason + timestamp
+        me = s.get(f"{API}/auth/me", headers=_h(token), timeout=15).json()
+        assert me["calorie_goal"] == 3230
+        assert me["calorie_last_adjust_reason"] is not None
+        assert me["calorie_last_adjust_at"] is not None
+
+    def test_apply_reco_no_adjustment_needed(self, s):
+        token, u, _ = _register_user(s)
+        _set_profile(s, token)
+        _insert_measurement_backdated(u["id"], 75.0, days_ago=14)
+        _insert_measurement_backdated(u["id"], 75.6, days_ago=0)  # on_track
+        r = s.post(f"{API}/user/calorie-recommendation/apply", headers=_h(token), timeout=15)
+        assert r.status_code == 200
+        d = r.json()
+        assert d["applied"] is False
+        assert "current_goal" in d
+
+    def test_apply_reco_no_profile(self, s):
+        token, _, _ = _register_user(s)
+        r = s.post(f"{API}/user/calorie-recommendation/apply", headers=_h(token), timeout=15)
+        assert r.status_code == 400
+
+    def test_apply_reco_insufficient_data(self, s):
+        token, _, _ = _register_user(s)
+        _set_profile(s, token)
+        r = s.post(f"{API}/user/calorie-recommendation/apply", headers=_h(token), timeout=15)
+        assert r.status_code == 400
+
+    def test_auto_adjust_on_new_weight_measurement(self, s):
+        """POST /api/measurements with weight_kg triggers adaptive adjust if enough history."""
+        token, u, _ = _register_user(s)
+        _set_profile(s, token)  # 3080 kcal
+        # Backdate 1 old measurement (14 days ago), then post a new one via API → should trigger auto-adjust
+        _insert_measurement_backdated(u["id"], 75.0, days_ago=14)
+        me_before = s.get(f"{API}/auth/me", headers=_h(token), timeout=15).json()
+        assert me_before["calorie_goal"] == 3080
+        assert me_before["calorie_last_adjust_at"] is None
+
+        r = s.post(f"{API}/measurements", headers=_h(token), json={"weight_kg": 75.05}, timeout=15)
+        assert r.status_code == 200
+        me_after = s.get(f"{API}/auth/me", headers=_h(token), timeout=15).json()
+        assert me_after["calorie_goal"] == 3230, f"expected 3230 (+150), got {me_after['calorie_goal']}"
+        assert me_after["calorie_last_adjust_at"] is not None
+        assert me_after["calorie_last_adjust_reason"] is not None
+
+    def test_auto_adjust_cooldown_blocks_second_within_7_days(self, s):
+        token, u, _ = _register_user(s)
+        _set_profile(s, token)
+        _insert_measurement_backdated(u["id"], 75.0, days_ago=14)
+        # First weight via API: triggers auto-adjust
+        s.post(f"{API}/measurements", headers=_h(token), json={"weight_kg": 75.05}, timeout=15)
+        goal_after_first = s.get(f"{API}/auth/me", headers=_h(token), timeout=15).json()["calorie_goal"]
+        assert goal_after_first == 3230
+        # Second weight via API: cooldown 7 days should block adjustment
+        s.post(f"{API}/measurements", headers=_h(token), json={"weight_kg": 75.1}, timeout=15)
+        goal_after_second = s.get(f"{API}/auth/me", headers=_h(token), timeout=15).json()["calorie_goal"]
+        assert goal_after_second == goal_after_first, "cooldown should prevent second auto-adjust within 7 days"
+
+    def test_profile_update_resets_adjust_fields(self, s):
+        """PUT /api/user/profile must reset calorie_last_adjust_at and calorie_last_adjust_reason."""
+        token, u, _ = _register_user(s)
+        _set_profile(s, token)
+        # Directly set adjust fields via DB
+        _DB.users.update_one(
+            {"id": u["id"]},
+            {"$set": {"calorie_last_adjust_at": datetime.now(timezone.utc).isoformat(),
+                      "calorie_last_adjust_reason": "TEST_iter4_reason"}}
+        )
+        # PUT profile
+        r = s.put(f"{API}/user/profile", headers=_h(token), json={
+            "sex": "homme", "age": 30, "height_cm": 180, "weight_kg": 75,
+            "activity_level": "modéré", "fitness_goal": "prise de masse"
+        }, timeout=15)
+        d = r.json()
+        assert d["calorie_last_adjust_at"] is None
+        assert d["calorie_last_adjust_reason"] is None
+
+    def test_auto_adjust_bounds_max_5000(self, s):
+        """calorie_goal cannot exceed 5000 via adaptive adjust."""
+        token, u, _ = _register_user(s)
+        _set_profile(s, token)
+        # Directly bump calorie_goal near max
+        _DB.users.update_one({"id": u["id"]}, {"$set": {"calorie_goal": 4950}})
+        _insert_measurement_backdated(u["id"], 75.0, days_ago=14)
+        _insert_measurement_backdated(u["id"], 75.05, days_ago=0)  # below → +150 would exceed 5000
+        r = s.get(f"{API}/user/calorie-recommendation", headers=_h(token), timeout=15)
+        d = r.json()
+        # Suggested goal must be capped at 5000
+        assert d["suggested_goal"] == 5000
+        # Because clamped delta becomes +50 not +150; server sets delta=0 (should_adjust false when new==current)
+        # Apply then: check nothing exceeds 5000
+        _DB.users.update_one({"id": u["id"]}, {"$set": {"calorie_goal": 5000}})
+        r2 = s.post(f"{API}/user/calorie-recommendation/apply", headers=_h(token), timeout=15)
+        assert r2.status_code == 200
+        d2 = r2.json()
+        # applied False since already at max
+        assert d2["applied"] is False
+
+    def test_auto_adjust_bounds_min_1200(self, s):
+        """calorie_goal cannot go below 1200 via adaptive adjust (sèche too slow → -150)."""
+        token, u, _ = _register_user(s)
+        _set_profile(s, token, goal="sèche")
+        _DB.users.update_one({"id": u["id"]}, {"$set": {"calorie_goal": 1250}})
+        _insert_measurement_backdated(u["id"], 75.0, days_ago=14)
+        _insert_measurement_backdated(u["id"], 74.95, days_ago=0)  # too slow → -150 wanted
+        r = s.get(f"{API}/user/calorie-recommendation", headers=_h(token), timeout=15)
+        d = r.json()
+        assert d["suggested_goal"] == 1200
+
