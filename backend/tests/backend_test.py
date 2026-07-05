@@ -1039,6 +1039,8 @@ class TestProgramAndLog:
         r = s.post(f"{API}/workouts/{wid}/log", headers=auth, json={"entries": [
             {"exercise_id": eid, "difficulty": "trop_facile"}
         ]}, timeout=15)
+        assert r.status_code == 422
+        s.delete(f"{API}/workouts/{wid}", headers=auth, timeout=15)
 
 
 # ---------------- NEW iteration 7: meals_per_day, exercise history, deload ----------------
@@ -1213,6 +1215,3 @@ class TestDeload:
         ex_ids = [d["exercise_id"] for d in r["deloads"]]
         assert ex_ids.count(eid) <= 1, f"deload listed multiple times: {r['deloads']}"
         s.delete(f"{API}/workouts/{wid}", headers=h, timeout=15)
-
-        assert r.status_code == 422
-        s.delete(f"{API}/workouts/{wid}", headers=auth, timeout=15)

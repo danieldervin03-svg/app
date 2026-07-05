@@ -673,7 +673,10 @@ async def log_session(workout_id: str, body: SessionLogInput, user: dict = Depen
         {"user_id": user["id"], "workout_id": workout_id},
         {"_id": 0},
     ).sort("performed_at", -1).to_list(20)
+    deloaded_ids: set = set()
     for entry in body.entries:
+        if entry.exercise_id in deloaded_ids:
+            continue
         ex = ex_by_id.get(entry.exercise_id)
         if not ex:
             continue
@@ -689,6 +692,7 @@ async def log_session(workout_id: str, body: SessionLogInput, user: dict = Depen
         if streak >= 3 and ex.get("target_weight_kg"):
             deload_target = round(ex["target_weight_kg"] * 0.9 * 2) / 2  # -10%
             ex["target_weight_kg"] = deload_target
+            deloaded_ids.add(entry.exercise_id)
             deloads.append({
                 "exercise_id": ex["id"],
                 "exercise_name": ex["name"],
