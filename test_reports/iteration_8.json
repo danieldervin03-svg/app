@@ -1,0 +1,34 @@
+{
+  "summary": "Iteration 8 backend testing: 81/81 pytest tests passed (100%). Added 5 new tests for POST /api/meals/estimate (success shape + calorie range, description<2 chars → 422, description>500 chars → 422, missing auth → 403, breakfast classification & meal_type fallback). All 76 previous tests remain green (auth, workouts, programs+log+deload+overload, meals CRUD+suggest, measurements+body/latest, summary, history/stats, coach chat, profile, adaptive calories, meals_per_day, exercise history). Note: the deload de-duplication bug reported in iteration_7 (test_deload_only_once_per_exercise_per_log) is now GREEN — the main agent fixed it in server.py.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now ~1350 lines — still above the 700-line guideline. Consider splitting routers by domain (auth, workouts, meals, measurements, coach, adaptive) into separate modules.",
+    "POST /api/meals/estimate has no unit-test coverage of the meal_type fallback path (the endpoint normalizes any invalid AI output to 'déjeuner') because the LLM consistently returns valid types in practice; the fallback is verified by inspection of server.py:832-834 and by test_estimate_meal_breakfast_classification which asserts meal_type is always in the allowed set."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py"
+  ],
+  "success_rate": {
+    "backend": "100% (81/81)",
+    "frontend": "not tested (backend-only request)"
+  },
+  "seed_data_creation": "No new seed data. Estimate tests are read-only against the LLM and do not persist meals. TEST_iter* users from prior iterations remain in DB.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "backend_test.py now has 81 tests total. Iteration 8 adds TestMealEstimate class with 5 tests for POST /api/meals/estimate. Manual observation confirms LLM returns realistic estimates: '150g de riz basmati avec 200g de poulet grillé et une salade verte' → e.g. 640 kcal with proper name/meal_type/breakdown. All previous iteration tests remain green including the iteration-7 deload de-dup bug (now fixed).",
+  "rca_of_issue": "N/A – no failures this iteration."
+}

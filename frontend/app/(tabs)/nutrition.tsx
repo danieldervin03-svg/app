@@ -26,6 +26,9 @@ export default function NutritionScreen() {
   const [mealName, setMealName] = useState("");
   const [mealCal, setMealCal] = useState("");
   const [mealType, setMealType] = useState<Meal["meal_type"]>("petit-déjeuner");
+  const [mealDesc, setMealDesc] = useState("");
+  const [estimating, setEstimating] = useState(false);
+  const [breakdown, setBreakdown] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,23 +52,64 @@ export default function NutritionScreen() {
   const remaining = Math.max(0, goal - consumed);
   const percent = Math.min(1, consumed / Math.max(1, goal));
 
+  const mealsPerDay = user?.meals_per_day ?? 4;
+  const mealsRemaining = Math.max(1, mealsPerDay - meals.length);
+  const perRemainingMeal = Math.max(0, Math.round(remaining / mealsRemaining));
+
   const onRefresh = async () => {
     setRefreshing(true);
     await load();
     setRefreshing(false);
   };
 
+  const estimateFromDesc = async () => {
+    if (!mealDesc.trim()) return;
+    setEstimating(true);
+    setError(null);
+    setBreakdown(null);
+    try {
+      const res = await api.estimateMeal(mealDesc.trim());
+      setMealName(res.name);
+      setMealCal(String(res.calories));
+      setMealType(res.meal_type);
+      setBreakdown(res.breakdown);
+    } catch (e: any) {
+      setError(e.message ?? "Estimation impossible");
+    } finally {
+      setEstimating(false);
+    }
+  };
+
   const submitMeal = async () => {
     setError(null);
-    const cal = parseInt(mealCal, 10);
-    if (!mealName.trim() || Number.isNaN(cal) || cal < 0) {
-      setError("Nom et calories valides requis");
+    // If user only filled description, estimate on-the-fly
+    let calories = parseInt(mealCal, 10);
+    let name = mealName.trim();
+    if ((Number.isNaN(calories) || !name) && mealDesc.trim()) {
+      try {
+        setSaving(true);
+        const res = await api.estimateMeal(mealDesc.trim());
+        name = name || res.name;
+        calories = Number.isNaN(calories) ? res.calories : calories;
+        setMealName(name);
+        setMealCal(String(calories));
+        setBreakdown(res.breakdown);
+      } catch (e: any) {
+        setSaving(false);
+        setError(e.message ?? "Estimation impossible");
+        return;
+      }
+    }
+    if (!name || Number.isNaN(calories) || calories < 0) {
+      setSaving(false);
+      setError("Décrivez votre repas ou renseignez nom et calories");
       return;
     }
     setSaving(true);
     try {
-      await api.createMeal({ name: mealName.trim(), calories: cal, meal_type: mealType });
-      setMealName(""); setMealCal(""); setMealType("petit-déjeuner");
+      await api.createMeal({ name, calories, meal_type: mealType });
+      setMealName(""); setMealCal(""); setMealDesc(""); setBreakdown(null);
+      setMealType("petit-déjeuner");
       setAddOpen(false);
       await load();
     } catch (e: any) {
@@ -181,6 +225,36 @@ export default function NutritionScreen() {
             <View style={styles.modalCard}>
               <View style={styles.dragHandle} />
               <Text style={styles.modalTitle}>Nouveau repas</Text>
+              <Text style={styles.modalSub}>
+                {`Il vous reste ${remaining} kcal à répartir sur ${mealsRemaining} repas restant${mealsRemaining > 1 ? "s" : ""} · ~${perRemainingMeal} kcal/repas`}
+              </Text>
+
+              <Input
+                label="Décrivez ce que vous avez mangé"
+                placeholder="Ex : 150g de riz avec du poulet grillé et une salade"
+                value={mealDesc}
+                onChangeText={setMealDesc}
+                multiline
+                testID="meal-desc-input"
+              />
+              <Pressable
+                onPress={estimateFromDesc}
+                disabled={estimating || !mealDesc.trim()}
+                style={[styles.estimateBtn, (!mealDesc.trim() || estimating) && { opacity: 0.4 }]}
+                testID="meal-estimate-btn"
+              >
+                <Ionicons name="sparkles" size={16} color={colors.brandPrimary} />
+                <Text style={styles.estimateBtnTxt}>
+                  {estimating ? "Estimation en cours…" : "Estimer les calories via IA"}
+                </Text>
+              </Pressable>
+
+              {breakdown ? (
+                <View style={styles.breakdownBox} testID="meal-breakdown">
+                  <Text style={styles.breakdownTxt}>{breakdown}</Text>
+                </View>
+              ) : null}
+
               <Input label="Nom" placeholder="Ex : Poulet et riz" value={mealName} onChangeText={setMealName} testID="meal-name-input" />
               <Input label="Calories" placeholder="450" keyboardType="numeric" value={mealCal} onChangeText={setMealCal} testID="meal-cal-input" />
               <Text style={styles.subLabel}>Type</Text>
@@ -198,7 +272,7 @@ export default function NutritionScreen() {
               </View>
               {error ? <Text style={styles.err}>{error}</Text> : null}
               <Button title="Enregistrer" onPress={submitMeal} loading={saving} testID="meal-save-button" style={{ marginTop: spacing.md }} />
-              <Pressable onPress={() => setAddOpen(false)} style={{ alignItems: "center", padding: spacing.md }}>
+              <Pressable onPress={() => { setAddOpen(false); setBreakdown(null); }} style={{ alignItems: "center", padding: spacing.md }}>
                 <Text style={{ color: colors.onSurfaceSecondary }}>Annuler</Text>
               </Pressable>
             </View>
@@ -314,6 +388,18 @@ const styles = StyleSheet.create({
   dragHandle: { width: 40, height: 4, backgroundColor: colors.borderStrong, borderRadius: 2, alignSelf: "center", marginBottom: spacing.md },
   modalTitle: { fontSize: font.xl, color: colors.onSurface, marginBottom: spacing.md, fontWeight: "500" },
   modalSub: { fontSize: font.base, color: colors.onSurfaceSecondary, marginBottom: spacing.md },
+  estimateBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm,
+    padding: spacing.sm, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.brandPrimary, backgroundColor: colors.brandTertiary,
+    marginBottom: spacing.md,
+  },
+  estimateBtnTxt: { color: colors.brandPrimary, fontSize: font.base, fontWeight: "500" },
+  breakdownBox: {
+    padding: spacing.sm, backgroundColor: colors.surfaceSecondary,
+    borderRadius: radius.md, marginBottom: spacing.md,
+  },
+  breakdownTxt: { fontSize: font.sm, color: colors.onSurfaceSecondary, fontStyle: "italic" },
   subLabel: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginBottom: spacing.xs, marginLeft: spacing.xs },
   chipsRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md },
   chip: {

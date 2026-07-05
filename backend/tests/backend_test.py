@@ -1123,6 +1123,48 @@ class TestExerciseHistory:
         assert r.status_code in (401, 403)
 
 
+# ---------------- NEW iteration 8: meal calorie estimation ----------------
+class TestMealEstimate:
+    def test_estimate_meal_success_shape(self, s, auth):
+        r = s.post(f"{API}/meals/estimate", headers=auth,
+                   json={"description": "150g de riz basmati avec 200g de poulet grillé et une salade verte"},
+                   timeout=90)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        for k in ["name", "calories", "meal_type", "breakdown"]:
+            assert k in d, f"missing key {k}"
+        assert isinstance(d["name"], str) and len(d["name"]) > 0
+        assert isinstance(d["calories"], int)
+        assert d["calories"] >= 0
+        # Plausible range for a typical meal (200-1200 kcal per acceptance spec)
+        assert 200 <= d["calories"] <= 1500, f"calories out of plausible range: {d['calories']}"
+        assert d["meal_type"] in ("petit-déjeuner", "déjeuner", "dîner", "collation")
+        assert isinstance(d["breakdown"], str) and len(d["breakdown"]) > 0
+
+    def test_estimate_meal_description_too_short(self, s, auth):
+        r = s.post(f"{API}/meals/estimate", headers=auth, json={"description": "a"}, timeout=15)
+        assert r.status_code == 422, r.text
+
+    def test_estimate_meal_description_too_long(self, s, auth):
+        r = s.post(f"{API}/meals/estimate", headers=auth,
+                   json={"description": "a" * 501}, timeout=15)
+        assert r.status_code == 422
+
+    def test_estimate_meal_requires_auth(self, s):
+        r = s.post(f"{API}/meals/estimate", json={"description": "un pain au chocolat"}, timeout=15)
+        assert r.status_code in (401, 403)
+
+    def test_estimate_meal_breakfast_classification(self, s, auth):
+        r = s.post(f"{API}/meals/estimate", headers=auth,
+                   json={"description": "deux croissants et un café au lait"}, timeout=90)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        # meal_type must always be in the allowed set (fallback to 'déjeuner' if AI returned junk)
+        assert d["meal_type"] in ("petit-déjeuner", "déjeuner", "dîner", "collation")
+        # Calories should be plausible (>0)
+        assert d["calories"] > 0
+
+
 class TestDeload:
     def _make(self, s, h, name="TEST Deload Bench", target=100.0):
         wk = s.post(f"{API}/workouts", headers=h, json={

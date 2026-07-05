@@ -255,6 +255,11 @@ export const api = {
     meal_type: Meal["meal_type"];
     preferences?: string;
   }) => request<{ suggestions: MealSuggestion[] }>("/meals/suggest", { method: "POST", body }),
+  estimateMeal: (description: string) =>
+    request<{ name: string; calories: number; meal_type: Meal["meal_type"]; breakdown: string }>(
+      "/meals/estimate",
+      { method: "POST", body: { description } },
+    ),
 
   // Measurements
   listMeasurements: () => request<Measurement[]>("/measurements"),

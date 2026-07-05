@@ -218,6 +218,10 @@ class MealSuggestInput(BaseModel):
     preferences: str = ""
 
 
+class MealEstimateInput(BaseModel):
+    description: str = Field(min_length=2, max_length=500)
+
+
 class Measurement(BaseModel):
     id: str = Field(default_factory=new_id)
     user_id: str
@@ -805,6 +809,35 @@ async def suggest_meals(body: MealSuggestInput, user: dict = Depends(get_current
             "description": str(s.get("description", ""))[:280],
         })
     return {"suggestions": cleaned}
+
+
+@api.post("/meals/estimate")
+async def estimate_meal(body: MealEstimateInput, user: dict = Depends(get_current_user)):
+    """Estimate calories + guess a short name for a meal from a free-form French description."""
+    system = (
+        "Tu es un nutritionniste. Tu réponds STRICTEMENT en JSON valide, sans texte hors JSON, "
+        "sans code fences. Toutes les valeurs textuelles sont en français."
+    )
+    prompt = (
+        f"Description du repas: « {body.description.strip()} »\n\n"
+        "Estime les calories totales de ce repas. Sois réaliste, en tenant compte des quantités "
+        "mentionnées. Si aucune quantité n'est donnée, estime pour une portion adulte moyenne.\n\n"
+        'Réponds avec ce schéma JSON exact:\n'
+        '{"name": "string court 3-6 mots", '
+        '"calories": int, '
+        '"meal_type": "petit-déjeuner|déjeuner|dîner|collation", '
+        '"breakdown": "string très court expliquant l\'estimation"}'
+    )
+    data = await ask_llm_json(system, prompt, f"est-meal-{user['id']}-{uuid.uuid4()}")
+    mt = str(data.get("meal_type", "déjeuner")).lower()
+    if mt not in ("petit-déjeuner", "déjeuner", "dîner", "collation"):
+        mt = "déjeuner"
+    return {
+        "name": str(data.get("name", "Repas"))[:80],
+        "calories": max(0, int(data.get("calories", 0))),
+        "meal_type": mt,
+        "breakdown": str(data.get("breakdown", ""))[:200],
+    }
 
 
 # ============================================================================
