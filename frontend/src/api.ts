@@ -117,12 +117,18 @@ export type Measurement = {
   weight_kg?: number | null;
   chest_cm?: number | null;
   waist_cm?: number | null;
+  belly_cm?: number | null;
   hips_cm?: number | null;
   arm_cm?: number | null;
   thigh_cm?: number | null;
   note: string;
   created_at: string;
 };
+
+export type BodyField =
+  | "weight_kg" | "chest_cm" | "waist_cm" | "belly_cm" | "hips_cm" | "arm_cm" | "thigh_cm";
+
+export type LatestMeasurements = Record<BodyField, { value: number; created_at: string } | null>;
 
 export type TodaySummary = {
   calorie_goal: number;
@@ -208,6 +214,7 @@ export const api = {
 
   // Measurements
   listMeasurements: () => request<Measurement[]>("/measurements"),
+  latestMeasurements: () => request<LatestMeasurements>("/measurements/latest"),
   createMeasurement: (body: Partial<Measurement>) =>
     request<Measurement>("/measurements", { method: "POST", body }),
   deleteMeasurement: (id: string) =>

@@ -188,6 +188,7 @@ class Measurement(BaseModel):
     weight_kg: Optional[float] = None
     chest_cm: Optional[float] = None
     waist_cm: Optional[float] = None
+    belly_cm: Optional[float] = None
     hips_cm: Optional[float] = None
     arm_cm: Optional[float] = None
     thigh_cm: Optional[float] = None
@@ -199,6 +200,7 @@ class MeasurementCreate(BaseModel):
     weight_kg: Optional[float] = None
     chest_cm: Optional[float] = None
     waist_cm: Optional[float] = None
+    belly_cm: Optional[float] = None
     hips_cm: Optional[float] = None
     arm_cm: Optional[float] = None
     thigh_cm: Optional[float] = None
@@ -550,6 +552,25 @@ async def suggest_meals(body: MealSuggestInput, user: dict = Depends(get_current
 async def list_measurements(user: dict = Depends(get_current_user)):
     items = await db.measurements.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", 1).to_list(500)
     return [Measurement(**it) for it in items]
+
+
+@api.get("/measurements/latest")
+async def latest_measurements(user: dict = Depends(get_current_user)):
+    """Return the most recent value per body part along with its date."""
+    fields = ["weight_kg", "chest_cm", "waist_cm", "belly_cm", "hips_cm", "arm_cm", "thigh_cm"]
+    docs = await db.measurements.find(
+        {"user_id": user["id"]}, {"_id": 0}
+    ).sort("created_at", -1).to_list(500)
+    result: dict = {}
+    for f in fields:
+        for d in docs:
+            v = d.get(f)
+            if v is not None:
+                result[f] = {"value": v, "created_at": d["created_at"]}
+                break
+        if f not in result:
+            result[f] = None
+    return result
 
 
 @api.post("/measurements", response_model=Measurement)

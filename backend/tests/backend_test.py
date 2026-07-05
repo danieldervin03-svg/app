@@ -714,3 +714,131 @@ class TestCalorieRecommendation:
         d = r.json()
         assert d["suggested_goal"] == 1200
 
+
+# ---------------- NEW iteration 5: belly_cm + /measurements/latest ----------------
+class TestBellyAndLatest:
+    def test_create_measurement_with_belly_cm(self, s):
+        """POST /api/measurements accepts belly_cm; GET /api/measurements returns it."""
+        token, _, _ = _register_user(s)
+        h = _h(token)
+        r = s.post(f"{API}/measurements", headers=h,
+                   json={"belly_cm": 88.5, "note": "TEST_iter5"}, timeout=15)
+        assert r.status_code == 200, r.text
+        m = r.json()
+        assert m["belly_cm"] == 88.5
+        assert m["chest_cm"] is None and m["waist_cm"] is None
+        # List returns the field
+        r2 = s.get(f"{API}/measurements", headers=h, timeout=15)
+        assert r2.status_code == 200
+        items = r2.json()
+        match = next((x for x in items if x["id"] == m["id"]), None)
+        assert match is not None
+        assert "belly_cm" in match
+        assert match["belly_cm"] == 88.5
+
+    def test_latest_all_null_for_new_user(self, s):
+        """GET /api/measurements/latest returns all 7 fields as null when no measurements exist."""
+        token, _, _ = _register_user(s)
+        r = s.get(f"{API}/measurements/latest", headers=_h(token), timeout=15)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        expected_fields = ["weight_kg", "chest_cm", "waist_cm", "belly_cm", "hips_cm", "arm_cm", "thigh_cm"]
+        assert set(d.keys()) == set(expected_fields)
+        for f in expected_fields:
+            assert d[f] is None, f"{f} should be null, got {d[f]}"
+
+    def test_latest_returns_most_recent_non_null_per_field(self, s):
+        """Mixed measurements: latest picks the most recent non-null per field independently."""
+        token, u, _ = _register_user(s)
+        h = _h(token)
+        uid = u["id"]
+        # Backdate 3 measurements with mixed fields
+        # Oldest (5d ago): chest=100, waist=80
+        _DB.measurements.insert_one({
+            "id": str(uuid.uuid4()), "user_id": uid,
+            "weight_kg": None, "chest_cm": 100.0, "waist_cm": 80.0,
+            "belly_cm": None, "hips_cm": None, "arm_cm": None, "thigh_cm": None,
+            "note": "TEST_iter5_old",
+            "created_at": (datetime.now(timezone.utc) - timedelta(days=5)).isoformat(),
+        })
+        # Middle (2d ago): chest=104 (overrides), belly=88
+        _DB.measurements.insert_one({
+            "id": str(uuid.uuid4()), "user_id": uid,
+            "weight_kg": None, "chest_cm": 104.0, "waist_cm": None,
+            "belly_cm": 88.0, "hips_cm": None, "arm_cm": None, "thigh_cm": None,
+            "note": "TEST_iter5_mid",
+            "created_at": (datetime.now(timezone.utc) - timedelta(days=2)).isoformat(),
+        })
+        # Newest (today): weight=75, arm=38 (waist stays 80 from oldest; thigh & hips stay null)
+        _DB.measurements.insert_one({
+            "id": str(uuid.uuid4()), "user_id": uid,
+            "weight_kg": 75.0, "chest_cm": None, "waist_cm": None,
+            "belly_cm": None, "hips_cm": None, "arm_cm": 38.0, "thigh_cm": None,
+            "note": "TEST_iter5_new",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        r = s.get(f"{API}/measurements/latest", headers=h, timeout=15)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        # weight: from newest
+        assert d["weight_kg"]["value"] == 75.0
+        # chest: from middle (104 overrides oldest 100)
+        assert d["chest_cm"]["value"] == 104.0
+        # waist: only from oldest
+        assert d["waist_cm"]["value"] == 80.0
+        # belly: from middle
+        assert d["belly_cm"]["value"] == 88.0
+        # arm: from newest
+        assert d["arm_cm"]["value"] == 38.0
+        # hips and thigh: never set → null
+        assert d["hips_cm"] is None
+        assert d["thigh_cm"] is None
+        # Each non-null entry has created_at
+        for f in ["weight_kg", "chest_cm", "waist_cm", "belly_cm", "arm_cm"]:
+            assert "created_at" in d[f] and isinstance(d[f]["created_at"], str)
+
+    def test_legacy_measurement_without_belly_cm_deserializes(self, s):
+        """Pre-iteration-5 documents (no belly_cm key) still deserialize to belly_cm=null."""
+        token, u, _ = _register_user(s)
+        h = _h(token)
+        # Insert a legacy-shape doc directly (no belly_cm field at all)
+        legacy_id = str(uuid.uuid4())
+        _DB.measurements.insert_one({
+            "id": legacy_id, "user_id": u["id"],
+            "weight_kg": 70.0, "chest_cm": 100.0, "waist_cm": 78.0,
+            "hips_cm": 90.0, "arm_cm": 34.0, "thigh_cm": 55.0,
+            "note": "TEST_iter5_legacy",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            # belly_cm intentionally missing
+        })
+        # GET list must serialize belly_cm as null (not crash)
+        r = s.get(f"{API}/measurements", headers=h, timeout=15)
+        assert r.status_code == 200, r.text
+        items = r.json()
+        legacy = next((x for x in items if x["id"] == legacy_id), None)
+        assert legacy is not None
+        assert "belly_cm" in legacy
+        assert legacy["belly_cm"] is None
+        assert legacy["chest_cm"] == 100.0
+        # /latest also works with legacy docs mixed in
+        r2 = s.get(f"{API}/measurements/latest", headers=h, timeout=15)
+        assert r2.status_code == 200
+        d = r2.json()
+        assert d["belly_cm"] is None
+        assert d["chest_cm"]["value"] == 100.0
+
+    def test_latest_seed_user_shape(self, s, auth):
+        """Seed user test@bp.com has multiple body measurements; /latest must expose all fields shape."""
+        r = s.get(f"{API}/measurements/latest", headers=auth, timeout=15)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        expected = ["weight_kg", "chest_cm", "waist_cm", "belly_cm", "hips_cm", "arm_cm", "thigh_cm"]
+        assert set(d.keys()) == set(expected)
+        # Each field must be either null or {value, created_at}
+        for f in expected:
+            v = d[f]
+            if v is not None:
+                assert isinstance(v, dict)
+                assert "value" in v and "created_at" in v
+                assert isinstance(v["value"], (int, float))
+

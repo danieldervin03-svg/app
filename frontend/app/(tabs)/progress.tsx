@@ -7,6 +7,7 @@ import { colors, font, radius, spacing } from "@/src/theme";
 import { Button, Input, EmptyState } from "@/src/components/ui";
 import { api, CalorieRecommendation, HistoryStats, Measurement } from "@/src/api";
 import { useAuth } from "@/src/auth";
+import { BodyMeasurements } from "@/src/components/body-measurements";
 
 function WeightChart({ data }: { data: Measurement[] }) {
   const points = data.filter((d) => typeof d.weight_kg === "number").slice(-14);
@@ -40,7 +41,7 @@ function WeightChart({ data }: { data: Measurement[] }) {
 
 export default function ProgressScreen() {
   const router = useRouter();
-  const { refresh } = useAuth();
+  const { user, refresh } = useAuth();
   const [items, setItems] = useState<Measurement[]>([]);
   const [stats, setStats] = useState<HistoryStats | null>(null);
   const [reco, setReco] = useState<CalorieRecommendation | null>(null);
@@ -50,6 +51,7 @@ export default function ProgressScreen() {
   const [weight, setWeight] = useState("");
   const [chest, setChest] = useState("");
   const [waist, setWaist] = useState("");
+  const [belly, setBelly] = useState("");
   const [hips, setHips] = useState("");
   const [arm, setArm] = useState("");
   const [thigh, setThigh] = useState("");
@@ -91,6 +93,7 @@ export default function ProgressScreen() {
       weight_kg: parseNum(weight),
       chest_cm: parseNum(chest),
       waist_cm: parseNum(waist),
+      belly_cm: parseNum(belly),
       hips_cm: parseNum(hips),
       arm_cm: parseNum(arm),
       thigh_cm: parseNum(thigh),
@@ -103,7 +106,7 @@ export default function ProgressScreen() {
     setSaving(true);
     try {
       await api.createMeasurement(body);
-      setWeight(""); setChest(""); setWaist(""); setHips(""); setArm(""); setThigh(""); setNote("");
+      setWeight(""); setChest(""); setWaist(""); setBelly(""); setHips(""); setArm(""); setThigh(""); setNote("");
       setOpen(false);
       await load();
       await refresh(); // in case backend auto-adjusted calorie_goal
@@ -208,6 +211,11 @@ export default function ProgressScreen() {
           </>
         ) : null}
 
+        <Text style={styles.sectionH}>Mensurations du corps</Text>
+        <View style={styles.bodyWrap}>
+          <BodyMeasurements sex={user?.sex} onSaved={load} testID="body-measurements" />
+        </View>
+
         <Text style={styles.sectionH}>Évolution du poids</Text>
         {reco && (reco.applicable || reco.status === "insufficient_data") ? (
           <View
@@ -274,8 +282,9 @@ export default function ProgressScreen() {
                 <Text style={styles.rowSub}>
                   {[
                     m.weight_kg != null ? `${m.weight_kg} kg` : null,
-                    m.chest_cm != null ? `Poitrine ${m.chest_cm}cm` : null,
+                    m.chest_cm != null ? `Torse ${m.chest_cm}cm` : null,
                     m.waist_cm != null ? `Taille ${m.waist_cm}cm` : null,
+                    m.belly_cm != null ? `Ventre ${m.belly_cm}cm` : null,
                     m.hips_cm != null ? `Hanches ${m.hips_cm}cm` : null,
                     m.arm_cm != null ? `Bras ${m.arm_cm}cm` : null,
                     m.thigh_cm != null ? `Cuisse ${m.thigh_cm}cm` : null,
@@ -301,6 +310,7 @@ export default function ProgressScreen() {
                 <Input label="Poids (kg)" placeholder="Ex : 72.5" keyboardType="decimal-pad" value={weight} onChangeText={setWeight} testID="measure-weight" />
                 <Input label="Poitrine (cm)" keyboardType="decimal-pad" value={chest} onChangeText={setChest} testID="measure-chest" />
                 <Input label="Taille (cm)" keyboardType="decimal-pad" value={waist} onChangeText={setWaist} testID="measure-waist" />
+                <Input label="Ventre (cm)" keyboardType="decimal-pad" value={belly} onChangeText={setBelly} testID="measure-belly" />
                 <Input label="Hanches (cm)" keyboardType="decimal-pad" value={hips} onChangeText={setHips} testID="measure-hips" />
                 <Input label="Bras (cm)" keyboardType="decimal-pad" value={arm} onChangeText={setArm} testID="measure-arm" />
                 <Input label="Cuisse (cm)" keyboardType="decimal-pad" value={thigh} onChangeText={setThigh} testID="measure-thigh" />
@@ -364,6 +374,11 @@ const styles = StyleSheet.create({
   histRow: {
     flexDirection: "row", alignItems: "center", gap: spacing.md,
     padding: spacing.md, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, marginBottom: spacing.sm,
+  },
+  bodyWrap: {
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: radius.lg,
+    padding: spacing.md,
   },
   chart: {
     backgroundColor: colors.surfaceSecondary, borderRadius: radius.lg, padding: spacing.md, height: 200,
