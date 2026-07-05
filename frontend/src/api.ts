@@ -89,6 +89,10 @@ export type Exercise = {
   reps: string;
   rest_seconds: number;
   notes: string;
+  target_weight_kg?: number | null;
+  last_difficulty?: "facile" | "reussi" | "echec" | null;
+  last_weight_kg?: number | null;
+  last_reps_done?: number | null;
 };
 
 export type Workout = {
@@ -99,6 +103,18 @@ export type Workout = {
   exercises: Exercise[];
   created_at: string;
   performed_at: string | null;
+  program_id?: string | null;
+  program_type?: "full_body" | "split" | null;
+  sessions_per_week?: number | null;
+  week_day?: string | null;
+  session_index?: number | null;
+};
+
+export type LogEntry = {
+  exercise_id: string;
+  difficulty: "facile" | "reussi" | "echec";
+  weight_kg?: number | null;
+  reps_done?: number | null;
 };
 
 export type Meal = {
@@ -199,6 +215,16 @@ export const api = {
     equipment: string;
     focus?: string;
   }) => request<Workout>("/workouts/generate", { method: "POST", body }),
+  generateProgram: (body: {
+    goal: string;
+    level: "débutant" | "intermédiaire" | "avancé";
+    program_type: "full_body" | "split";
+    sessions_per_week: number;
+    duration_minutes: number;
+    equipment: string;
+  }) => request<Workout[]>("/workouts/generate-program", { method: "POST", body }),
+  logSession: (id: string, entries: LogEntry[]) =>
+    request<Workout>(`/workouts/${id}/log`, { method: "POST", body: { entries } }),
 
   // Meals
   listMeals: (date?: string) =>

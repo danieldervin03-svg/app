@@ -126,6 +126,11 @@ class Exercise(BaseModel):
     reps: str = "10"
     rest_seconds: int = 60
     notes: str = ""
+    # Progressive overload targets
+    target_weight_kg: Optional[float] = None
+    last_difficulty: Optional[Literal["facile", "reussi", "echec"]] = None
+    last_weight_kg: Optional[float] = None
+    last_reps_done: Optional[int] = None
 
 
 class Workout(BaseModel):
@@ -136,6 +141,12 @@ class Workout(BaseModel):
     exercises: List[Exercise] = []
     created_at: str = Field(default_factory=now_utc)
     performed_at: Optional[str] = None
+    # Program grouping
+    program_id: Optional[str] = None
+    program_type: Optional[Literal["full_body", "split"]] = None
+    sessions_per_week: Optional[int] = None
+    week_day: Optional[str] = None  # "lundi", "mardi", ... for splits
+    session_index: Optional[int] = None  # 1..N in the weekly plan
 
 
 class WorkoutCreate(BaseModel):
@@ -152,11 +163,31 @@ class WorkoutUpdate(BaseModel):
 
 
 class WorkoutGenerateInput(BaseModel):
-    goal: str  # "prise de masse", "perte de poids", "endurance", ...
+    goal: str
     level: Literal["débutant", "intermédiaire", "avancé"] = "intermédiaire"
     duration_minutes: int = 45
     equipment: str = "salle de sport"
-    focus: str = ""  # optional focus zone
+    focus: str = ""
+
+
+class ProgramGenerateInput(BaseModel):
+    goal: str
+    level: Literal["débutant", "intermédiaire", "avancé"] = "intermédiaire"
+    program_type: Literal["full_body", "split"] = "full_body"
+    sessions_per_week: int = Field(ge=2, le=6, default=3)
+    duration_minutes: int = 45
+    equipment: str = "salle de sport"
+
+
+class LogEntry(BaseModel):
+    exercise_id: str
+    difficulty: Literal["facile", "reussi", "echec"]
+    weight_kg: Optional[float] = None
+    reps_done: Optional[int] = None
+
+
+class SessionLogInput(BaseModel):
+    entries: List[LogEntry]
 
 
 class Meal(BaseModel):
@@ -481,6 +512,158 @@ async def generate_workout(body: WorkoutGenerateInput, user: dict = Depends(get_
     )
     await db.workouts.insert_one(wk.model_dump())
     return wk
+
+
+# ============================================================================
+# Program generation (multi-session)
+# ============================================================================
+
+WEEK_DAYS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+
+
+@api.post("/workouts/generate-program", response_model=List[Workout])
+async def generate_program(body: ProgramGenerateInput, user: dict = Depends(get_current_user)):
+    """Generate N workouts for a full weekly program (full body or classic split)."""
+    system = (
+        "Tu es un coach sportif expert. Tu réponds STRICTEMENT en JSON valide, "
+        "sans texte hors JSON ni code fence. Toutes les valeurs textuelles sont en français."
+    )
+    if body.program_type == "full_body":
+        style = (
+            f"Génère {body.sessions_per_week} séances FULL BODY identiques dans leur structure mais "
+            "avec exercices variés (rotation d'exercices sollicitant tout le corps à chaque séance)."
+        )
+    else:
+        style = (
+            f"Génère {body.sessions_per_week} séances de SPLIT CLASSIQUE. "
+            "Réparts les groupes musculaires sur la semaine (ex: 'Pecs + Biceps', 'Dos + Triceps', "
+            "'Jambes', 'Épaules + Abdos'). Chaque séance cible 1 à 2 groupes majeurs."
+        )
+    prompt = (
+        f"{style}\n"
+        f"Objectif: {body.goal}\n"
+        f"Niveau: {body.level}\n"
+        f"Durée par séance: {body.duration_minutes} min\n"
+        f"Équipement: {body.equipment}\n\n"
+        'Réponds avec ce schéma JSON exact:\n'
+        '{"program_name": "string court", '
+        '"sessions": [{"title": "string court (ex: Séance A - Full body / Lundi: Pecs + Biceps)", '
+        '"week_day": "lundi|mardi|mercredi|jeudi|vendredi|samedi", '
+        '"description": "string court", '
+        '"exercises": [{"name": "string", "sets": int, "reps": "string ex: 10 ou 30s", '
+        '"target_weight_kg": number ou null, "rest_seconds": int, "notes": "string bref"}]}]}\n\n'
+        f"IMPORTANT: exactement {body.sessions_per_week} séances. 5 à 8 exercices par séance. "
+        "Pour target_weight_kg indique un poids de départ raisonnable pour un pratiquant "
+        f"{body.level} (peut être null si poids du corps)."
+    )
+    data = await ask_llm_json(system, prompt, f"gen-program-{user['id']}-{uuid.uuid4()}")
+
+    program_id = new_id()
+    sessions = data.get("sessions") or []
+    workouts: List[Workout] = []
+    for i, s in enumerate(sessions[: body.sessions_per_week], start=1):
+        exs = []
+        for ex in s.get("exercises", []):
+            try:
+                tw = ex.get("target_weight_kg")
+                exs.append(Exercise(
+                    name=str(ex.get("name", "Exercice"))[:80],
+                    sets=int(ex.get("sets", 3)),
+                    reps=str(ex.get("reps", "10")),
+                    rest_seconds=int(ex.get("rest_seconds", 60)),
+                    notes=str(ex.get("notes", ""))[:200],
+                    target_weight_kg=float(tw) if tw not in (None, "", "null") else None,
+                ))
+            except Exception:
+                continue
+        wk = Workout(
+            user_id=user["id"],
+            title=str(s.get("title", f"Séance {i}"))[:80],
+            description=str(s.get("description", ""))[:400],
+            exercises=exs,
+            program_id=program_id,
+            program_type=body.program_type,
+            sessions_per_week=body.sessions_per_week,
+            week_day=str(s.get("week_day", ""))[:20] or (WEEK_DAYS[i - 1] if body.program_type == "split" else None),
+            session_index=i,
+        )
+        await db.workouts.insert_one(wk.model_dump())
+        workouts.append(wk)
+
+    return workouts
+
+
+# ============================================================================
+# Session logging + progressive overload
+# ============================================================================
+
+def _next_target_after_log(prev_weight: Optional[float], difficulty: str) -> Optional[float]:
+    """Apply progressive overload rule based on user difficulty feedback."""
+    if prev_weight is None or prev_weight <= 0:
+        return prev_weight
+    if difficulty == "facile":
+        # +5% weight
+        return round(prev_weight * 1.05 * 2) / 2  # nearest 0.5 kg
+    if difficulty == "reussi":
+        # +2.5% weight
+        return round(prev_weight * 1.025 * 2) / 2
+    if difficulty == "echec":
+        # -5% weight
+        return max(0.0, round(prev_weight * 0.95 * 2) / 2)
+    return prev_weight
+
+
+@api.post("/workouts/{workout_id}/log", response_model=Workout)
+async def log_session(workout_id: str, body: SessionLogInput, user: dict = Depends(get_current_user)):
+    doc = await db.workouts.find_one({"id": workout_id, "user_id": user["id"]}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Entraînement introuvable")
+
+    exercises = doc.get("exercises", [])
+    ex_by_id = {e["id"]: e for e in exercises}
+
+    for entry in body.entries:
+        ex = ex_by_id.get(entry.exercise_id)
+        if not ex:
+            continue
+        # Record what was done
+        ex["last_difficulty"] = entry.difficulty
+        prev_target = ex.get("target_weight_kg")
+        if entry.weight_kg is not None:
+            ex["last_weight_kg"] = entry.weight_kg
+            base_weight = entry.weight_kg
+        else:
+            base_weight = prev_target
+        if entry.reps_done is not None:
+            ex["last_reps_done"] = entry.reps_done
+        # Progressive overload → new target weight for next session
+        new_target = _next_target_after_log(base_weight, entry.difficulty)
+        if new_target is not None:
+            ex["target_weight_kg"] = new_target
+
+    # Save log document + mark workout as performed
+    log_doc = {
+        "id": new_id(),
+        "user_id": user["id"],
+        "workout_id": workout_id,
+        "entries": [e.model_dump() for e in body.entries],
+        "performed_at": now_utc(),
+    }
+    await db.session_logs.insert_one(log_doc)
+    await db.workouts.update_one(
+        {"id": workout_id},
+        {"$set": {"exercises": exercises, "performed_at": now_utc()}},
+    )
+    updated = await db.workouts.find_one({"id": workout_id}, {"_id": 0})
+    return Workout(**updated)
+
+
+@api.get("/workouts/{workout_id}/logs")
+async def workout_logs(workout_id: str, user: dict = Depends(get_current_user)):
+    items = await db.session_logs.find(
+        {"user_id": user["id"], "workout_id": workout_id}, {"_id": 0}
+    ).sort("performed_at", -1).to_list(200)
+    return items
 
 
 # ============================================================================

@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 6 (workout overhaul: program types + per-exercise difficulty feedback + progressive overload) fully validated. Backend pytest suite extended 55 → 66 tests (+11 new in TestProgramAndLog). 66/66 PASS in 49.78s. New coverage: (1) POST /api/workouts/generate-program validation – sessions_per_week=1 → 422, sessions_per_week=7 → 422, invalid program_type ('push_pull_legs') → 422; (2) full_body 3-session program – 3 workouts, single shared program_id, session_index=[1,2,3], program_type='full_body', 3-12 exercises each; (3) split 4-session program – 4 workouts, shared program_id, each session exposes a valid french week_day AND its title mentions at least one muscle group keyword (pecs/dos/jambes/épaules/bras/biceps/triceps/abdos/…); (4) POST /workouts/:id/log applies progressive overload correctly – facile 40→42 (*1.05), echec 30→28.5 (*0.95), reussi 50→51.0 (*1.025 with Python banker's rounding of 51.25); last_difficulty is recorded per exercise, performed_at set; (5) log with entry.weight_kg=60 + facile uses the provided weight as overload base → target 63.0, last_weight_kg=60, last_reps_done=8 persisted; (6) log with unknown exercise_id is skipped silently while the known entry updates normally, and one log document is still created; (7) GET /workouts/:id/logs returns list sorted DESC by performed_at with no mongo _id leaked, workout_id present; (8) log on unknown workout → 404; (9) invalid difficulty ('trop_facile') → 422. Regression: all 55 prior tests remain green (auth, workouts CRUD/AI single generate, meals CRUD/AI suggest, coach chat, profile Mifflin-St Jeor, adaptive calorie recommendation + apply + cooldown + bounds, belly_cm + /measurements/latest).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/auth/me sans token", "issue": "Still returns 403 (HTTPBearer default) instead of 401 — carried over, non-blocking."},
+      {"endpoint": "POST /api/workouts/:id/log rounding", "issue": "Python round() uses banker's rounding (ROUND_HALF_EVEN): 50 kg reussi → 51.25 * 2 = 102.5 → round to 102 → 51.0 kg (not 51.5). Documented in test comment; if the product wants ROUND_HALF_UP, replace round() with math.floor(x + 0.5) in _next_target_after_log. Non-blocking, just a rounding-mode nuance."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(LOW) Consider using ROUND_HALF_UP (math.floor(x*2 + 0.5)/2) instead of round() in _next_target_after_log if the product spec expects e.g. 51.25 → 51.5 rather than the current 51.25 → 51.0 (banker's rounding).",
+    "(LOW) Carried over: server.py is now ~1240 lines — split into modules (auth, profile, workouts+program+log, meals, measurements, coach, adaptive) for maintainability.",
+    "(LOW) Carried over: return 401 instead of 403 when Authorization header missing (customize HTTPBearer)."
+  ],
+  "critical_code_review_comments": [
+    "Exercise model (server.py:122-133) correctly adds target_weight_kg, last_difficulty, last_weight_kg, last_reps_done as Optional — legacy workouts without these fields still deserialize (verified by TestWorkouts::test_workout_crud_flow still passing).",
+    "Workout model (server.py:136-149) exposes program_id/program_type/sessions_per_week/week_day/session_index as Optional so single /generate workouts (no program) still validate. Single /generate keeps returning these fields as null.",
+    "ProgramGenerateInput (server.py:173-179) uses Field(ge=2, le=6) — Pydantic surfaces 422 for out-of-range sessions_per_week, and Literal['full_body','split'] surfaces 422 for wrong program_type. Both validated by tests.",
+    "generate_program (server.py:524-593) slices sessions to body.sessions_per_week and assigns session_index starting at 1; falls back to WEEK_DAYS[i-1] when the LLM does not return week_day for split. All workouts share a single program_id created before the loop. Good.",
+    "_next_target_after_log (server.py:600-613) properly clamps to min 0 for 'echec' and returns prev_weight untouched when None or <=0. Uses round(x*2)/2 → banker's rounding side-effect on .25 half-steps (documented above).",
+    "log_session (server.py:616-658) is correct: (a) iterates entries, skips unknown exercise_id via .get() → no exception; (b) records last_difficulty/last_weight_kg/last_reps_done only when provided; (c) uses entry.weight_kg as overload base when provided, otherwise falls back to previous target_weight_kg; (d) inserts one document into db.session_logs with new_id + performed_at; (e) sets workout.performed_at. Returns updated Workout via find_one with _id projection stripped.",
+    "GET /workouts/:id/logs (server.py:661-666) sorts DESC by performed_at with {\"_id\": 0} projection — no ObjectId leak."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py"],
+  "success_rate": {"backend": "100% (66/66)", "frontend": "not tested (backend-only iteration per request)"},
+  "seed_data_creation": "Iteration 6 tests create ~7 TEST_iter6 workouts (all deleted at end of each test) and 2 AI-generated programs (3 + 4 workouts, all deleted). No new users registered — reuses the seed test@bp.com. No orphan data.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration 6 (workout overhaul) fully green. Test file /app/backend/tests/backend_test.py now has 66 tests (11 added under class TestProgramAndLog). New endpoints exercised: POST /api/workouts/generate-program (validation 422 cases + 2 AI-backed successes), POST /api/workouts/:id/log (overload rules for facile/reussi/echec, weight_kg-as-base override, unknown exercise_id skip, invalid workout 404, invalid difficulty 422), GET /api/workouts/:id/logs (sorted desc, no _id leak). Helper _make_workout_with_targets creates deterministic workouts via POST /api/workouts with pre-set target_weight_kg values, avoiding LLM calls for the overload math tests. Note: reussi rounding of *1.025 uses Python's banker's rounding so e.g. 50 → 51.0 (not 51.5); this is documented in a test comment and flagged as a low-priority action item.",
+  "rca_of_issue": "No unresolved issues. One flagged minor observation: _next_target_after_log's use of round(x*2)/2 inherits Python's ROUND_HALF_EVEN semantics, which yields e.g. 50 kg reussi → 51.0 kg (not 51.5 kg) because 51.25 * 2 = 102.5 rounds to 102 (even). This is deterministic and consistent, but if product expects half-up (51.5), replace round() with math.floor(x*2 + 0.5)/2."
+}

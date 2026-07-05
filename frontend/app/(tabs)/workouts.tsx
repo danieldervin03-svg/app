@@ -68,9 +68,26 @@ export default function WorkoutsScreen() {
                 <Ionicons name="barbell-outline" size={20} color={colors.onBrandTertiary} />
               </View>
               <View style={{ flex: 1 }}>
+                <View style={styles.rowTop}>
+                  {item.week_day ? (
+                    <View style={styles.dayPill}>
+                      <Text style={styles.dayPillTxt}>{item.week_day}</Text>
+                    </View>
+                  ) : item.program_type === "full_body" && item.session_index ? (
+                    <View style={styles.dayPill}>
+                      <Text style={styles.dayPillTxt}>Séance {item.session_index}</Text>
+                    </View>
+                  ) : null}
+                  {item.performed_at ? (
+                    <View style={styles.donePill}>
+                      <Ionicons name="checkmark" size={12} color={colors.success} />
+                      <Text style={styles.donePillTxt}>Fait</Text>
+                    </View>
+                  ) : null}
+                </View>
                 <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
                 <Text style={styles.cardSub}>
-                  {item.exercises.length} exercices · {item.performed_at ? "Terminé" : "À faire"}
+                  {item.exercises.length} exercices
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color={colors.muted} />
@@ -116,6 +133,18 @@ const styles = StyleSheet.create({
   },
   cardTitle: { fontSize: font.lg, color: colors.onSurface, fontWeight: "500" },
   cardSub: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginTop: 2 },
+  rowTop: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: 2 },
+  dayPill: {
+    paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.pill,
+    backgroundColor: colors.brandTertiary,
+  },
+  dayPillTxt: { fontSize: 10, color: colors.onBrandTertiary, textTransform: "capitalize", fontWeight: "500" },
+  donePill: {
+    flexDirection: "row", alignItems: "center", gap: 3,
+    paddingHorizontal: 6, paddingVertical: 2, borderRadius: radius.pill,
+    backgroundColor: colors.surfaceSecondary,
+  },
+  donePillTxt: { fontSize: 10, color: colors.success, fontWeight: "500" },
   fab: {
     position: "absolute", bottom: 16, alignSelf: "center",
     flexDirection: "row", alignItems: "center", gap: spacing.sm,

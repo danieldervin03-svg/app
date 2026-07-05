@@ -842,3 +842,199 @@ class TestBellyAndLatest:
                 assert "value" in v and "created_at" in v
                 assert isinstance(v["value"], (int, float))
 
+
+
+# ---------------- NEW iteration 6: Program generation + session log + overload ----------------
+class TestProgramAndLog:
+    def _make_workout_with_targets(self, s, auth, targets):
+        """Create a workout directly (no AI) with given target weights for deterministic overload testing."""
+        exs = []
+        for i, (name, target) in enumerate(targets):
+            exs.append({
+                "id": str(uuid.uuid4()),
+                "name": name,
+                "sets": 3,
+                "reps": "10",
+                "rest_seconds": 60,
+                "notes": "",
+                "target_weight_kg": target,
+            })
+        r = s.post(f"{API}/workouts", headers=auth, json={
+            "title": f"TEST_iter6 Log {uuid.uuid4().hex[:4]}",
+            "description": "iter6",
+            "exercises": exs,
+        }, timeout=15)
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    # --- Validation on generate-program (no LLM call needed) ---
+    def test_generate_program_sessions_below_min(self, s, auth):
+        r = s.post(f"{API}/workouts/generate-program", headers=auth, json={
+            "goal": "prise de masse", "level": "intermédiaire",
+            "program_type": "full_body", "sessions_per_week": 1,
+            "duration_minutes": 45, "equipment": "salle de sport",
+        }, timeout=15)
+        assert r.status_code == 422, r.text
+
+    def test_generate_program_sessions_above_max(self, s, auth):
+        r = s.post(f"{API}/workouts/generate-program", headers=auth, json={
+            "goal": "prise de masse", "level": "intermédiaire",
+            "program_type": "full_body", "sessions_per_week": 7,
+            "duration_minutes": 45, "equipment": "salle de sport",
+        }, timeout=15)
+        assert r.status_code == 422, r.text
+
+    def test_generate_program_invalid_type(self, s, auth):
+        r = s.post(f"{API}/workouts/generate-program", headers=auth, json={
+            "goal": "prise de masse", "level": "intermédiaire",
+            "program_type": "push_pull_legs", "sessions_per_week": 3,
+            "duration_minutes": 45, "equipment": "salle de sport",
+        }, timeout=15)
+        assert r.status_code == 422, r.text
+
+    # --- AI-backed program generation ---
+    def test_generate_program_full_body_3(self, s, auth):
+        r = s.post(f"{API}/workouts/generate-program", headers=auth, json={
+            "goal": "prise de masse", "level": "intermédiaire",
+            "program_type": "full_body", "sessions_per_week": 3,
+            "duration_minutes": 45, "equipment": "salle de sport",
+        }, timeout=120)
+        assert r.status_code == 200, r.text
+        workouts = r.json()
+        assert isinstance(workouts, list)
+        assert len(workouts) == 3, f"expected 3 workouts, got {len(workouts)}"
+        program_ids = {w["program_id"] for w in workouts}
+        assert len(program_ids) == 1 and None not in program_ids, "all sessions must share one non-null program_id"
+        session_indexes = sorted(w["session_index"] for w in workouts)
+        assert session_indexes == [1, 2, 3]
+        for w in workouts:
+            assert w["program_type"] == "full_body"
+            assert w["sessions_per_week"] == 3
+            assert 3 <= len(w["exercises"]) <= 12
+            # cleanup
+            s.delete(f"{API}/workouts/{w['id']}", headers=auth, timeout=15)
+
+    def test_generate_program_split_4(self, s, auth):
+        r = s.post(f"{API}/workouts/generate-program", headers=auth, json={
+            "goal": "prise de masse", "level": "intermédiaire",
+            "program_type": "split", "sessions_per_week": 4,
+            "duration_minutes": 60, "equipment": "salle de sport",
+        }, timeout=120)
+        assert r.status_code == 200, r.text
+        workouts = r.json()
+        assert len(workouts) == 4
+        assert len({w["program_id"] for w in workouts}) == 1
+        # Splits must expose week_day and mention muscle groups in title
+        valid_days = {"lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"}
+        muscle_keywords = ["pecs", "dos", "jambes", "épaules", "bras", "biceps", "triceps",
+                            "abdos", "quadriceps", "ischio", "poitrine", "mollets", "fessiers"]
+        for w in workouts:
+            assert w["program_type"] == "split"
+            assert w["sessions_per_week"] == 4
+            assert w["week_day"], f"split session missing week_day: {w}"
+            assert w["week_day"].lower() in valid_days, f"unexpected day: {w['week_day']}"
+            title_lower = w["title"].lower()
+            assert any(k in title_lower for k in muscle_keywords), \
+                f"split title should mention a muscle group, got: {w['title']}"
+            # cleanup
+            s.delete(f"{API}/workouts/{w['id']}", headers=auth, timeout=15)
+
+    # --- Session log + progressive overload ---
+    def test_log_applies_overload_facile_reussi_echec(self, s, auth):
+        wk = self._make_workout_with_targets(s, auth, [
+            ("Squat", 40.0),      # facile → *1.05 = 42.0
+            ("Bench Press", 30.0),  # echec → *0.95 = 28.5
+            ("Rowing", 50.0),      # reussi → *1.025 = 51.25 → banker's round(102.5)/2 = 51.0
+        ])
+        wid = wk["id"]
+        entries = [
+            {"exercise_id": wk["exercises"][0]["id"], "difficulty": "facile"},
+            {"exercise_id": wk["exercises"][1]["id"], "difficulty": "echec"},
+            {"exercise_id": wk["exercises"][2]["id"], "difficulty": "reussi"},
+        ]
+        r = s.post(f"{API}/workouts/{wid}/log", headers=auth, json={"entries": entries}, timeout=15)
+        assert r.status_code == 200, r.text
+        updated = r.json()
+        assert updated["performed_at"] is not None
+        by_id = {e["id"]: e for e in updated["exercises"]}
+        assert by_id[wk["exercises"][0]["id"]]["target_weight_kg"] == 42.0
+        assert by_id[wk["exercises"][0]["id"]]["last_difficulty"] == "facile"
+        assert by_id[wk["exercises"][1]["id"]]["target_weight_kg"] == 28.5
+        assert by_id[wk["exercises"][1]["id"]]["last_difficulty"] == "echec"
+        assert by_id[wk["exercises"][2]["id"]]["target_weight_kg"] == 51.0
+        assert by_id[wk["exercises"][2]["id"]]["last_difficulty"] == "reussi"
+        # cleanup
+        s.delete(f"{API}/workouts/{wid}", headers=auth, timeout=15)
+
+    def test_log_uses_provided_weight_as_overload_base(self, s, auth):
+        """If entry.weight_kg is provided, overload is computed from that base, not from previous target."""
+        wk = self._make_workout_with_targets(s, auth, [("Deadlift", 100.0)])
+        wid = wk["id"]
+        eid = wk["exercises"][0]["id"]
+        # Provide weight_kg=60 with 'facile' → new target = round(60*1.05*2)/2 = round(126)/2 = 63.0
+        r = s.post(f"{API}/workouts/{wid}/log", headers=auth, json={"entries": [
+            {"exercise_id": eid, "difficulty": "facile", "weight_kg": 60.0, "reps_done": 8}
+        ]}, timeout=15)
+        assert r.status_code == 200, r.text
+        ex = r.json()["exercises"][0]
+        assert ex["last_weight_kg"] == 60.0
+        assert ex["last_reps_done"] == 8
+        assert ex["target_weight_kg"] == 63.0
+        s.delete(f"{API}/workouts/{wid}", headers=auth, timeout=15)
+
+    def test_log_unknown_exercise_id_skipped_gracefully(self, s, auth):
+        wk = self._make_workout_with_targets(s, auth, [("Curl", 20.0)])
+        wid = wk["id"]
+        real_eid = wk["exercises"][0]["id"]
+        fake_eid = str(uuid.uuid4())
+        r = s.post(f"{API}/workouts/{wid}/log", headers=auth, json={"entries": [
+            {"exercise_id": fake_eid, "difficulty": "facile"},
+            {"exercise_id": real_eid, "difficulty": "reussi"},
+        ]}, timeout=15)
+        assert r.status_code == 200, r.text
+        updated = r.json()
+        # real exercise updated: 20 * 1.025 = 20.5 → round(41)/2 = 20.5
+        assert updated["exercises"][0]["target_weight_kg"] == 20.5
+        assert updated["exercises"][0]["last_difficulty"] == "reussi"
+        # log doc created even with unknown entry
+        r2 = s.get(f"{API}/workouts/{wid}/logs", headers=auth, timeout=15)
+        assert r2.status_code == 200
+        assert len(r2.json()) == 1
+        s.delete(f"{API}/workouts/{wid}", headers=auth, timeout=15)
+
+    def test_get_logs_sorted_desc(self, s, auth):
+        wk = self._make_workout_with_targets(s, auth, [("Overhead Press", 30.0)])
+        wid = wk["id"]
+        eid = wk["exercises"][0]["id"]
+        # Two log calls
+        s.post(f"{API}/workouts/{wid}/log", headers=auth,
+               json={"entries": [{"exercise_id": eid, "difficulty": "reussi"}]}, timeout=15)
+        import time
+        time.sleep(1.1)  # ensure ISO timestamps differ
+        s.post(f"{API}/workouts/{wid}/log", headers=auth,
+               json={"entries": [{"exercise_id": eid, "difficulty": "facile"}]}, timeout=15)
+        r = s.get(f"{API}/workouts/{wid}/logs", headers=auth, timeout=15)
+        assert r.status_code == 200, r.text
+        logs = r.json()
+        assert len(logs) == 2
+        # Sorted descending by performed_at
+        assert logs[0]["performed_at"] >= logs[1]["performed_at"]
+        # No mongo _id
+        for lg in logs:
+            assert "_id" not in lg
+            assert lg["workout_id"] == wid
+        s.delete(f"{API}/workouts/{wid}", headers=auth, timeout=15)
+
+    def test_log_workout_not_found(self, s, auth):
+        r = s.post(f"{API}/workouts/nonexistent-id/log", headers=auth, json={"entries": []}, timeout=15)
+        assert r.status_code == 404
+
+    def test_log_invalid_difficulty(self, s, auth):
+        wk = self._make_workout_with_targets(s, auth, [("Test", 20.0)])
+        wid = wk["id"]
+        eid = wk["exercises"][0]["id"]
+        r = s.post(f"{API}/workouts/{wid}/log", headers=auth, json={"entries": [
+            {"exercise_id": eid, "difficulty": "trop_facile"}
+        ]}, timeout=15)
+        assert r.status_code == 422
+        s.delete(f"{API}/workouts/{wid}", headers=auth, timeout=15)

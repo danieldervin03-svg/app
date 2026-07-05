@@ -13,15 +13,21 @@ import { useAuth } from "@/src/auth";
 const LEVELS = ["débutant", "intermédiaire", "avancé"] as const;
 const DURATIONS = [30, 45, 60, 90];
 const EQUIP = ["poids du corps", "haltères", "salle de sport"];
+const SESSIONS_PER_WEEK = [2, 3, 4, 5, 6];
+const TYPES: { key: "full_body" | "split"; label: string; sub: string }[] = [
+  { key: "full_body", label: "Full body", sub: "Corps entier à chaque séance" },
+  { key: "split", label: "Split classique", sub: "Lundi pecs+biceps, mardi dos, etc." },
+];
 
 export default function GenerateWorkout() {
   const router = useRouter();
   const { user } = useAuth();
+  const [programType, setProgramType] = useState<"full_body" | "split">("full_body");
+  const [sessions, setSessions] = useState(3);
   const [goal, setGoal] = useState(user?.fitness_goal ?? "prise de masse");
   const [level, setLevel] = useState<(typeof LEVELS)[number]>("intermédiaire");
   const [duration, setDuration] = useState(45);
   const [equipment, setEquipment] = useState("salle de sport");
-  const [focus, setFocus] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,14 +39,17 @@ export default function GenerateWorkout() {
     }
     setLoading(true);
     try {
-      const w = await api.generateWorkout({
+      const list = await api.generateProgram({
         goal: goal.trim(),
         level,
+        program_type: programType,
+        sessions_per_week: sessions,
         duration_minutes: duration,
         equipment,
-        focus: focus.trim(),
       });
-      router.replace(`/workout/${w.id}` as any);
+      if (list.length > 0) {
+        router.replace(`/(tabs)/workouts` as any);
+      }
     } catch (e: any) {
       setError(e.message || "Génération impossible");
     } finally {
@@ -66,12 +75,44 @@ export default function GenerateWorkout() {
           </Pressable>
           <View style={{ flex: 1 }} />
           <Text style={styles.title}>Programme IA</Text>
-          <Text style={styles.subtitle}>{"Décrivez vos objectifs, l'IA construit votre séance."}</Text>
+          <Text style={styles.subtitle}>{"Choisissez le type et le nombre de séances, l'IA construit tout."}</Text>
         </SafeAreaView>
       </View>
 
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+          <Text style={styles.label}>Type de programme</Text>
+          {TYPES.map((t) => (
+            <Pressable
+              key={t.key}
+              onPress={() => setProgramType(t.key)}
+              style={[styles.typeCard, programType === t.key && styles.typeCardActive]}
+              testID={`gen-type-${t.key}`}
+            >
+              <View style={styles.radio}>
+                {programType === t.key ? <View style={styles.radioDot} /> : null}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.typeLbl}>{t.label}</Text>
+                <Text style={styles.typeSub}>{t.sub}</Text>
+              </View>
+            </Pressable>
+          ))}
+
+          <Text style={styles.label}>Séances par semaine</Text>
+          <View style={styles.chips}>
+            {SESSIONS_PER_WEEK.map((n) => (
+              <Pressable
+                key={n}
+                onPress={() => setSessions(n)}
+                style={[styles.chip, sessions === n && styles.chipActive]}
+                testID={`gen-sessions-${n}`}
+              >
+                <Text style={[styles.chipTxt, sessions === n && styles.chipTxtActive]}>{n}</Text>
+              </Pressable>
+            ))}
+          </View>
+
           <Input
             label="Objectif"
             placeholder="Ex : prise de masse, perte de poids…"
@@ -122,18 +163,10 @@ export default function GenerateWorkout() {
             ))}
           </View>
 
-          <Input
-            label="Focus (facultatif)"
-            placeholder="Ex : jambes, cardio, dos"
-            value={focus}
-            onChangeText={setFocus}
-            testID="gen-focus-input"
-          />
-
           {error ? <Text style={styles.err}>{error}</Text> : null}
 
           <Button
-            title={loading ? "Génération en cours…" : "Générer mon programme"}
+            title={loading ? "Génération en cours…" : `Générer ${sessions} séances`}
             onPress={submit}
             loading={loading}
             testID="gen-submit"
@@ -146,7 +179,7 @@ export default function GenerateWorkout() {
 }
 
 const styles = StyleSheet.create({
-  hero: { height: 220 },
+  hero: { height: 200 },
   heroInner: { flex: 1, padding: spacing.lg, justifyContent: "flex-end" },
   back: {
     position: "absolute", top: spacing.md, left: spacing.md,
@@ -157,6 +190,21 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: font.base, color: colors.onSurfaceSecondary, marginTop: spacing.xs },
   scroll: { padding: spacing.lg, paddingBottom: spacing.xxxl },
   label: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginBottom: spacing.xs, marginLeft: spacing.xs, marginTop: spacing.md },
+  typeCard: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    padding: spacing.md, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.border,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.surface,
+  },
+  typeCardActive: { borderColor: colors.brandPrimary, backgroundColor: colors.brandTertiary },
+  radio: {
+    width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: colors.brandPrimary,
+    alignItems: "center", justifyContent: "center",
+  },
+  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.brandPrimary },
+  typeLbl: { fontSize: font.lg, color: colors.onSurface, fontWeight: "500" },
+  typeSub: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginTop: 2 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md },
   chip: {
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,

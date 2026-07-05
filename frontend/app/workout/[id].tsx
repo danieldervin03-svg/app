@@ -6,7 +6,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { colors, font, radius, spacing } from "@/src/theme";
 import { Button, Input } from "@/src/components/ui";
 import { CoachChat } from "@/src/components/coach-chat";
-import { api, Exercise, Workout } from "@/src/api";
+import { api, Exercise, LogEntry, Workout } from "@/src/api";
+
+type Difficulty = "facile" | "reussi" | "echec";
+const DIFFICULTIES: { key: Difficulty; label: string; color: string; icon: any }[] = [
+  { key: "facile", label: "Facile", color: "#65A30D", icon: "arrow-up" },
+  { key: "reussi", label: "Réussi", color: "#0891B2", icon: "checkmark" },
+  { key: "echec", label: "Échec", color: "#DC2626", icon: "arrow-down" },
+];
 
 export default function WorkoutDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -14,6 +21,9 @@ export default function WorkoutDetail() {
   const [workout, setWorkout] = useState<Workout | null>(null);
   const [loading, setLoading] = useState(true);
   const [coachOpen, setCoachOpen] = useState(false);
+  const [logOpen, setLogOpen] = useState(false);
+  const [logSaving, setLogSaving] = useState(false);
+  const [logEntries, setLogEntries] = useState<Record<string, LogEntry>>({});
 
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState<Exercise | null>(null);
@@ -76,12 +86,46 @@ export default function WorkoutDetail() {
     } catch {}
   };
 
-  const complete = async () => {
+  const openLog = () => {
     if (!workout) return;
+    const init: Record<string, LogEntry> = {};
+    workout.exercises.forEach((ex) => {
+      init[ex.id] = {
+        exercise_id: ex.id,
+        difficulty: "reussi",
+        weight_kg: ex.target_weight_kg ?? null,
+      };
+    });
+    setLogEntries(init);
+    setLogOpen(true);
+  };
+
+  const setDifficulty = (exId: string, d: Difficulty) => {
+    setLogEntries((prev) => ({
+      ...prev,
+      [exId]: { ...prev[exId], difficulty: d },
+    }));
+  };
+
+  const setWeight = (exId: string, txt: string) => {
+    const n = parseFloat(txt.replace(",", "."));
+    setLogEntries((prev) => ({
+      ...prev,
+      [exId]: { ...prev[exId], weight_kg: Number.isFinite(n) ? n : null },
+    }));
+  };
+
+  const submitLog = async () => {
+    if (!workout) return;
+    setLogSaving(true);
     try {
-      const w = await api.completeWorkout(workout.id);
+      const entries = Object.values(logEntries);
+      const w = await api.logSession(workout.id, entries);
       setWorkout(w);
-    } catch {}
+      setLogOpen(false);
+    } catch {} finally {
+      setLogSaving(false);
+    }
   };
 
   const deleteWorkout = async () => {
@@ -133,10 +177,10 @@ export default function WorkoutDetail() {
 
         <View style={styles.actionsRow}>
           <Button
-            title={workout.performed_at ? "Refaire" : "Marquer terminé"}
-            onPress={complete}
-            testID="workout-complete"
-            variant={workout.performed_at ? "secondary" : "primary"}
+            title={workout.performed_at ? "Refaire la séance" : "Terminer la séance"}
+            onPress={openLog}
+            testID="workout-log-open"
+            variant="primary"
             style={{ flex: 1 }}
           />
           <Pressable
@@ -156,24 +200,41 @@ export default function WorkoutDetail() {
           </Pressable>
         </View>
 
-        {workout.exercises.map((ex) => (
-          <View key={ex.id} style={styles.exRow} testID={`exercise-${ex.id}`}>
-            <View style={styles.exIcon}>
-              <Ionicons name="fitness-outline" size={18} color={colors.onBrandTertiary} />
+        {workout.exercises.map((ex) => {
+          const diffMeta = ex.last_difficulty
+            ? DIFFICULTIES.find((d) => d.key === ex.last_difficulty)
+            : null;
+          return (
+            <View key={ex.id} style={styles.exRow} testID={`exercise-${ex.id}`}>
+              <View style={styles.exIcon}>
+                <Ionicons name="fitness-outline" size={18} color={colors.onBrandTertiary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={styles.exTopRow}>
+                  <Text style={styles.exName} numberOfLines={1}>{ex.name}</Text>
+                  {diffMeta ? (
+                    <View style={[styles.diffPill, { backgroundColor: diffMeta.color + "22" }]}>
+                      <Ionicons name={diffMeta.icon} size={10} color={diffMeta.color} />
+                      <Text style={[styles.diffPillTxt, { color: diffMeta.color }]}>{diffMeta.label}</Text>
+                    </View>
+                  ) : null}
+                </View>
+                <Text style={styles.exSub}>
+                  {ex.sets} séries × {ex.reps}
+                  {ex.target_weight_kg ? ` · ${ex.target_weight_kg} kg` : ""}
+                  {" · repos "}{ex.rest_seconds}s
+                </Text>
+                {ex.notes ? <Text style={styles.exNote}>{ex.notes}</Text> : null}
+              </View>
+              <Pressable onPress={() => openEdit(ex)} style={styles.miniBtn} testID={`exercise-edit-${ex.id}`}>
+                <Ionicons name="create-outline" size={18} color={colors.brandPrimary} />
+              </Pressable>
+              <Pressable onPress={() => removeExercise(ex.id)} style={styles.miniBtn} testID={`exercise-delete-${ex.id}`}>
+                <Ionicons name="trash-outline" size={18} color={colors.error} />
+              </Pressable>
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.exName}>{ex.name}</Text>
-              <Text style={styles.exSub}>{ex.sets} séries × {ex.reps} · repos {ex.rest_seconds}s</Text>
-              {ex.notes ? <Text style={styles.exNote}>{ex.notes}</Text> : null}
-            </View>
-            <Pressable onPress={() => openEdit(ex)} style={styles.miniBtn} testID={`exercise-edit-${ex.id}`}>
-              <Ionicons name="create-outline" size={18} color={colors.brandPrimary} />
-            </Pressable>
-            <Pressable onPress={() => removeExercise(ex.id)} style={styles.miniBtn} testID={`exercise-delete-${ex.id}`}>
-              <Ionicons name="trash-outline" size={18} color={colors.error} />
-            </Pressable>
-          </View>
-        ))}
+          );
+        })}
 
         {workout.exercises.length === 0 ? (
           <Text style={styles.emptyEx}>Ajoutez votre premier exercice.</Text>
@@ -206,6 +267,70 @@ export default function WorkoutDetail() {
             </View>
           </KeyboardAvoidingView>
         </View>
+      </Modal>
+
+      {/* Session log modal - progressive overload */}
+      <Modal visible={logOpen} animationType="slide" onRequestClose={() => setLogOpen(false)} presentationStyle="pageSheet">
+        <SafeAreaView style={styles.container}>
+          <View style={styles.header}>
+            <Pressable onPress={() => setLogOpen(false)} style={styles.iconBtn} testID="log-close">
+              <Ionicons name="close" size={22} color={colors.onSurface} />
+            </Pressable>
+            <Text style={styles.headerTitle}>Bilan de séance</Text>
+            <View style={styles.iconBtn} />
+          </View>
+          <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 40 }}>
+            <Text style={styles.logIntro}>
+              Notez la difficulté de chaque exercice. L{"'"}IA ajustera automatiquement les charges pour la prochaine séance (surcharge progressive).
+            </Text>
+            {workout.exercises.map((ex) => {
+              const entry = logEntries[ex.id];
+              return (
+                <View key={ex.id} style={styles.logCard} testID={`log-ex-${ex.id}`}>
+                  <Text style={styles.logExName}>{ex.name}</Text>
+                  <Text style={styles.logExSub}>
+                    Cible : {ex.sets}×{ex.reps}{ex.target_weight_kg ? ` @ ${ex.target_weight_kg} kg` : ""}
+                  </Text>
+                  {ex.target_weight_kg != null ? (
+                    <Input
+                      label="Poids soulevé (kg)"
+                      keyboardType="decimal-pad"
+                      value={entry?.weight_kg != null ? String(entry.weight_kg) : ""}
+                      onChangeText={(t) => setWeight(ex.id, t)}
+                      testID={`log-weight-${ex.id}`}
+                    />
+                  ) : null}
+                  <View style={styles.diffRow}>
+                    {DIFFICULTIES.map((d) => {
+                      const active = entry?.difficulty === d.key;
+                      return (
+                        <Pressable
+                          key={d.key}
+                          onPress={() => setDifficulty(ex.id, d.key)}
+                          style={[
+                            styles.diffBtn,
+                            active && { backgroundColor: d.color, borderColor: d.color },
+                          ]}
+                          testID={`log-diff-${ex.id}-${d.key}`}
+                        >
+                          <Ionicons name={d.icon} size={14} color={active ? "#FFF" : d.color} />
+                          <Text style={[styles.diffBtnTxt, active && { color: "#FFF" }]}>{d.label}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              );
+            })}
+            <Button
+              title="Enregistrer et ajuster"
+              onPress={submitLog}
+              loading={logSaving}
+              testID="log-submit"
+              style={{ marginTop: spacing.md }}
+            />
+          </ScrollView>
+        </SafeAreaView>
       </Modal>
 
       <CoachChat
@@ -253,6 +378,28 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center",
   },
   exName: { fontSize: font.lg, color: colors.onSurface, fontWeight: "500" },
+  exTopRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  diffPill: {
+    flexDirection: "row", alignItems: "center", gap: 3,
+    paddingHorizontal: 6, paddingVertical: 2, borderRadius: radius.pill,
+  },
+  diffPillTxt: { fontSize: 10, fontWeight: "500", textTransform: "uppercase", letterSpacing: 0.4 },
+  logIntro: { fontSize: font.base, color: colors.onSurfaceSecondary, marginBottom: spacing.lg, lineHeight: 20 },
+  logCard: {
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  logExName: { fontSize: font.lg, color: colors.onSurface, fontWeight: "500" },
+  logExSub: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginTop: 2, marginBottom: spacing.md },
+  diffRow: { flexDirection: "row", gap: spacing.sm },
+  diffBtn: {
+    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4,
+    paddingVertical: 10, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
+  },
+  diffBtnTxt: { fontSize: font.sm, color: colors.onSurface, fontWeight: "500" },
   exSub: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginTop: 2 },
   exNote: { fontSize: font.sm, color: colors.onSurfaceTertiary, marginTop: 4, fontStyle: "italic" },
   miniBtn: { padding: spacing.sm },
