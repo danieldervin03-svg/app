@@ -105,8 +105,13 @@ export function BodyMeasurements({
   return (
     <View style={styles.container} testID={testID}>
       <View style={styles.diagram}>
-        {/* Realistic AI-generated body silhouette */}
-        <Image source={source} style={styles.silhouette} contentFit="contain" />
+        {/* Realistic AI-generated body silhouette, tinted to the current brand color */}
+        <Image
+          source={source}
+          style={styles.silhouette}
+          contentFit="contain"
+          tintColor={colors.brand}
+        />
 
         {/* Zone markers + badges overlaid */}
         {ZONES.map((z) => {
