@@ -24,15 +24,15 @@ type Zone = {
   side: "left" | "right";
 };
 
-// Positions calibrated visually against the generated AI silhouettes
-// (front-facing person, feet at ~98%, head at ~5%)
+// Positions calibrated visually against the generated silhouettes (1:2 aspect)
+// Head 5-15%, shoulders 18-22%, chest 25-28%, waist 38-42%, hips 48-52%, thighs 60-72%, feet 98%
 const ZONES: Zone[] = [
-  { key: "chest_cm", label: "Torse", y: 28, side: "right" },
-  { key: "arm_cm", label: "Bras", y: 40, side: "left" },
-  { key: "waist_cm", label: "Taille", y: 45, side: "right" },
-  { key: "belly_cm", label: "Ventre", y: 50, side: "left" },
-  { key: "hips_cm", label: "Hanches", y: 55, side: "right" },
-  { key: "thigh_cm", label: "Cuisse", y: 70, side: "left" },
+  { key: "chest_cm", label: "Torse", y: 27, side: "right" },
+  { key: "arm_cm", label: "Bras", y: 32, side: "left" },
+  { key: "waist_cm", label: "Taille", y: 39, side: "right" },
+  { key: "belly_cm", label: "Ventre", y: 44, side: "left" },
+  { key: "hips_cm", label: "Hanches", y: 50, side: "right" },
+  { key: "thigh_cm", label: "Cuisse", y: 65, side: "left" },
 ];
 
 const LABEL_FR: Record<ZoneKey, string> = {
