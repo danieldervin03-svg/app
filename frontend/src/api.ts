@@ -47,7 +47,23 @@ export type User = {
   email: string;
   name: string;
   calorie_goal: number;
+  calorie_goal_auto: boolean;
+  sex: "homme" | "femme" | null;
+  age: number | null;
+  height_cm: number | null;
+  weight_kg: number | null;
+  activity_level: "sédentaire" | "léger" | "modéré" | "actif" | "très actif" | null;
+  fitness_goal: "prise de masse" | "sèche" | "maintien" | null;
   created_at: string;
+};
+
+export type ProfileInput = {
+  sex: "homme" | "femme";
+  age: number;
+  height_cm: number;
+  weight_kg: number;
+  activity_level: "sédentaire" | "léger" | "modéré" | "actif" | "très actif";
+  fitness_goal: "prise de masse" | "sèche" | "maintien";
 };
 
 export type Exercise = {
@@ -134,6 +150,8 @@ export const api = {
   me: () => request<User>("/auth/me"),
   updateCalorieGoal: (calorie_goal: number) =>
     request<User>("/user/calorie-goal", { method: "PUT", body: { calorie_goal } }),
+  updateProfile: (body: ProfileInput) =>
+    request<User>("/user/profile", { method: "PUT", body }),
 
   // Workouts
   listWorkouts: () => request<Workout[]>("/workouts"),

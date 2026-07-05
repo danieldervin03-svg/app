@@ -50,6 +50,21 @@ export default function HomeScreen() {
         <Text style={styles.date}>{today.charAt(0).toUpperCase() + today.slice(1)}</Text>
         <Text style={styles.hello} testID="home-greeting">Bonjour {user?.name} 👋</Text>
 
+        {!user?.sex || !user?.age || !user?.height_cm || !user?.weight_kg ? (
+          <Pressable
+            style={styles.profileBanner}
+            onPress={() => router.push("/(tabs)/profile")}
+            testID="home-profile-banner"
+          >
+            <Ionicons name="information-circle" size={22} color={colors.brandPrimary} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.bannerTitle}>Personnalisez votre objectif calorique</Text>
+              <Text style={styles.bannerSub}>Renseignez votre profil santé (sexe, âge, taille, poids, objectif) pour un calcul précis.</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.brandPrimary} />
+          </Pressable>
+        ) : null}
+
         <Card style={styles.calorieCard}>
           <Text style={styles.cardLabel}>Calories restantes</Text>
           <Text style={styles.calorieBig} testID="home-calories-remaining">{remaining}</Text>
@@ -142,6 +157,13 @@ const styles = StyleSheet.create({
   scroll: { padding: spacing.lg, paddingBottom: spacing.xxxl },
   date: { fontSize: font.sm, color: colors.onSurfaceSecondary, textTransform: "capitalize" },
   hello: { fontSize: font.xxl, color: colors.onSurface, marginTop: spacing.xs, marginBottom: spacing.lg },
+  profileBanner: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    padding: spacing.md, marginBottom: spacing.md,
+    backgroundColor: colors.brandTertiary, borderRadius: radius.md,
+  },
+  bannerTitle: { fontSize: font.base, color: colors.onBrandTertiary, fontWeight: "500" },
+  bannerSub: { fontSize: font.sm, color: colors.onBrandTertiary, marginTop: 2 },
   calorieCard: { alignItems: "flex-start" },
   cardLabel: { fontSize: font.sm, color: colors.onSurfaceSecondary },
   calorieBig: { fontSize: 48, color: colors.brandPrimary, fontWeight: "500", marginTop: spacing.xs },

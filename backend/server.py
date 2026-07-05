@@ -67,7 +67,49 @@ class UserPublic(BaseModel):
     email: EmailStr
     name: str
     calorie_goal: int = 2000
+    calorie_goal_auto: bool = True  # true = recomputed from profile; false = manual override
+    sex: Optional[Literal["homme", "femme"]] = None
+    age: Optional[int] = None
+    height_cm: Optional[float] = None
+    weight_kg: Optional[float] = None
+    activity_level: Optional[Literal["sédentaire", "léger", "modéré", "actif", "très actif"]] = None
+    fitness_goal: Optional[Literal["prise de masse", "sèche", "maintien"]] = None
     created_at: str
+
+
+class ProfileUpdate(BaseModel):
+    sex: Literal["homme", "femme"]
+    age: int = Field(ge=10, le=100)
+    height_cm: float = Field(ge=120, le=230)
+    weight_kg: float = Field(ge=30, le=250)
+    activity_level: Literal["sédentaire", "léger", "modéré", "actif", "très actif"]
+    fitness_goal: Literal["prise de masse", "sèche", "maintien"]
+
+
+ACTIVITY_FACTORS = {
+    "sédentaire": 1.2,
+    "léger": 1.375,
+    "modéré": 1.55,
+    "actif": 1.725,
+    "très actif": 1.9,
+}
+
+GOAL_ADJUSTMENTS = {
+    "prise de masse": 400,
+    "sèche": -400,
+    "maintien": 0,
+}
+
+
+def compute_calorie_goal(sex: str, age: int, height_cm: float, weight_kg: float, activity_level: str, goal: str) -> int:
+    """Mifflin-St Jeor BMR × activity factor + goal adjustment."""
+    if sex == "homme":
+        bmr = 10 * weight_kg + 6.25 * height_cm - 5 * age + 5
+    else:
+        bmr = 10 * weight_kg + 6.25 * height_cm - 5 * age - 161
+    tdee = bmr * ACTIVITY_FACTORS.get(activity_level, 1.375)
+    total = tdee + GOAL_ADJUSTMENTS.get(goal, 0)
+    return max(1000, int(round(total / 10) * 10))
 
 
 class AuthResponse(BaseModel):
@@ -212,6 +254,13 @@ def public_user(u: dict) -> UserPublic:
         email=u["email"],
         name=u["name"],
         calorie_goal=u.get("calorie_goal", 2000),
+        calorie_goal_auto=u.get("calorie_goal_auto", True),
+        sex=u.get("sex"),
+        age=u.get("age"),
+        height_cm=u.get("height_cm"),
+        weight_kg=u.get("weight_kg"),
+        activity_level=u.get("activity_level"),
+        fitness_goal=u.get("fitness_goal"),
         created_at=u["created_at"],
     )
 
@@ -231,6 +280,13 @@ async def register(body: RegisterInput):
         "name": body.name.strip(),
         "password_hash": hash_password(body.password),
         "calorie_goal": 2000,
+        "calorie_goal_auto": True,
+        "sex": None,
+        "age": None,
+        "height_cm": None,
+        "weight_kg": None,
+        "activity_level": None,
+        "fitness_goal": None,
         "created_at": now_utc(),
     }
     await db.users.insert_one(user)
@@ -254,7 +310,32 @@ async def me(user: dict = Depends(get_current_user)):
 
 @api.put("/user/calorie-goal", response_model=UserPublic)
 async def update_calorie_goal(body: CalorieGoalUpdate, user: dict = Depends(get_current_user)):
-    await db.users.update_one({"id": user["id"]}, {"$set": {"calorie_goal": body.calorie_goal}})
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"calorie_goal": body.calorie_goal, "calorie_goal_auto": False}},
+    )
+    updated = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password_hash": 0})
+    return public_user(updated)
+
+
+@api.put("/user/profile", response_model=UserPublic)
+async def update_profile(body: ProfileUpdate, user: dict = Depends(get_current_user)):
+    """Update health profile and auto-recompute daily calorie goal (unless previously overridden manually)."""
+    computed = compute_calorie_goal(
+        body.sex, body.age, body.height_cm, body.weight_kg, body.activity_level, body.fitness_goal
+    )
+    updates = {
+        "sex": body.sex,
+        "age": body.age,
+        "height_cm": body.height_cm,
+        "weight_kg": body.weight_kg,
+        "activity_level": body.activity_level,
+        "fitness_goal": body.fitness_goal,
+    }
+    # Always recompute when profile changes; user can still override afterwards via /calorie-goal
+    updates["calorie_goal"] = computed
+    updates["calorie_goal_auto"] = True
+    await db.users.update_one({"id": user["id"]}, {"$set": updates})
     updated = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password_hash": 0})
     return public_user(updated)
 

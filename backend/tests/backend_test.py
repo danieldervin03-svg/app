@@ -315,3 +315,121 @@ class TestCoachChat:
     def test_coach_chat_validation(self, s, auth):
         r = s.post(f"{API}/coach/chat", headers=auth, json={"message": ""}, timeout=15)
         assert r.status_code == 422
+
+
+
+# ---------------- Profile (NEW iteration 3) ----------------
+class TestProfile:
+    def _register(self, s):
+        email = f"TEST_{uuid.uuid4().hex[:8]}@bp.com"
+        r = s.post(f"{API}/auth/register", json={"email": email, "password": "abcdef", "name": "TEST U"}, timeout=15)
+        assert r.status_code == 200
+        return r.json()["token"], r.json()["user"], email
+
+    def _auth(self, token):
+        return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+    def test_new_user_has_default_profile_fields(self, s):
+        token, u, _ = self._register(s)
+        # /auth/me returns new fields
+        r = s.get(f"{API}/auth/me", headers=self._auth(token), timeout=15)
+        assert r.status_code == 200
+        data = r.json()
+        for k in ["sex", "age", "height_cm", "weight_kg", "activity_level", "fitness_goal", "calorie_goal_auto"]:
+            assert k in data, f"missing {k}"
+        assert data["sex"] is None
+        assert data["age"] is None
+        assert data["calorie_goal_auto"] is True
+        assert data["calorie_goal"] == 2000
+
+    def test_profile_update_computes_male(self, s):
+        token, _, _ = self._register(s)
+        body = {"sex": "homme", "age": 30, "height_cm": 180, "weight_kg": 75,
+                "activity_level": "modéré", "fitness_goal": "prise de masse"}
+        r = s.put(f"{API}/user/profile", headers=self._auth(token), json=body, timeout=15)
+        assert r.status_code == 200, r.text
+        data = r.json()
+        # BMR = 10*75 + 6.25*180 - 5*30 + 5 = 1730 ; TDEE = 1730*1.55 = 2681.5 ; +400 = 3081.5 → 3080
+        assert data["calorie_goal"] == 3080, f"expected 3080, got {data['calorie_goal']}"
+        assert data["calorie_goal_auto"] is True
+        assert data["sex"] == "homme"
+        assert data["age"] == 30
+        assert data["height_cm"] == 180
+        assert data["weight_kg"] == 75
+        assert data["activity_level"] == "modéré"
+        assert data["fitness_goal"] == "prise de masse"
+
+    def test_profile_update_computes_female(self, s):
+        token, _, _ = self._register(s)
+        body = {"sex": "femme", "age": 25, "height_cm": 165, "weight_kg": 60,
+                "activity_level": "léger", "fitness_goal": "sèche"}
+        r = s.put(f"{API}/user/profile", headers=self._auth(token), json=body, timeout=15)
+        assert r.status_code == 200, r.text
+        # BMR = 10*60 + 6.25*165 - 5*25 - 161 = 1345.25 ; *1.375 = 1849.72 ; -400 = 1449.72 → 1450
+        assert r.json()["calorie_goal"] == 1450, r.json()
+
+    def test_profile_persists_via_me(self, s):
+        token, _, _ = self._register(s)
+        body = {"sex": "femme", "age": 40, "height_cm": 170, "weight_kg": 65,
+                "activity_level": "actif", "fitness_goal": "maintien"}
+        s.put(f"{API}/user/profile", headers=self._auth(token), json=body, timeout=15)
+        r = s.get(f"{API}/auth/me", headers=self._auth(token), timeout=15)
+        data = r.json()
+        assert data["sex"] == "femme"
+        assert data["fitness_goal"] == "maintien"
+        assert data["calorie_goal_auto"] is True
+        # 10*65 + 6.25*170 - 5*40 - 161 = 650+1062.5-200-161 = 1351.5 ; *1.725 = 2331.34 ; +0 → 2330
+        assert data["calorie_goal"] == 2330
+
+    def test_profile_validation_errors(self, s):
+        token, _, _ = self._register(s)
+        h = self._auth(token)
+        base = {"sex": "homme", "age": 30, "height_cm": 180, "weight_kg": 75,
+                "activity_level": "modéré", "fitness_goal": "prise de masse"}
+
+        cases = [
+            {**base, "sex": "autre"},                     # invalid sex
+            {**base, "age": 5},                            # under min
+            {**base, "age": 150},                          # above max
+            {**base, "activity_level": "hyperactif"},      # invalid activity
+            {**base, "fitness_goal": "tonification"},      # invalid goal
+            {**base, "height_cm": 100},                    # under min
+            {**base, "height_cm": 300},                    # above max
+            {**base, "weight_kg": 20},                     # under min
+            {**base, "weight_kg": 400},                    # above max
+        ]
+        for c in cases:
+            r = s.put(f"{API}/user/profile", headers=h, json=c, timeout=15)
+            assert r.status_code == 422, f"case {c} should 422, got {r.status_code} {r.text}"
+
+    def test_manual_calorie_goal_flips_auto_and_persists(self, s):
+        token, _, _ = self._register(s)
+        h = self._auth(token)
+        # First set profile → auto = true
+        s.put(f"{API}/user/profile", headers=h, json={"sex": "homme", "age": 30, "height_cm": 180,
+             "weight_kg": 75, "activity_level": "modéré", "fitness_goal": "prise de masse"}, timeout=15)
+        # Manual override
+        r = s.put(f"{API}/user/calorie-goal", headers=h, json={"calorie_goal": 2500}, timeout=15)
+        assert r.status_code == 200
+        assert r.json()["calorie_goal"] == 2500
+        assert r.json()["calorie_goal_auto"] is False
+        # Verify via /me
+        r2 = s.get(f"{API}/auth/me", headers=h, timeout=15)
+        assert r2.json()["calorie_goal"] == 2500
+        assert r2.json()["calorie_goal_auto"] is False
+
+    def test_profile_update_flips_auto_back_true(self, s):
+        token, _, _ = self._register(s)
+        h = self._auth(token)
+        s.put(f"{API}/user/calorie-goal", headers=h, json={"calorie_goal": 2500}, timeout=15)
+        assert s.get(f"{API}/auth/me", headers=h, timeout=15).json()["calorie_goal_auto"] is False
+        # Now profile PUT should recompute and mark auto=true
+        r = s.put(f"{API}/user/profile", headers=h, json={"sex": "homme", "age": 30, "height_cm": 180,
+             "weight_kg": 75, "activity_level": "modéré", "fitness_goal": "prise de masse"}, timeout=15)
+        assert r.json()["calorie_goal_auto"] is True
+        assert r.json()["calorie_goal"] == 3080
+
+    def test_profile_requires_auth(self, s):
+        r = s.put(f"{API}/user/profile", json={"sex": "homme", "age": 30, "height_cm": 180,
+             "weight_kg": 75, "activity_level": "modéré", "fitness_goal": "prise de masse"}, timeout=15)
+        assert r.status_code in (401, 403)

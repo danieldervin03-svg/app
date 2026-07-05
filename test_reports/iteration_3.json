@@ -1,0 +1,43 @@
+{
+  "summary": "Iteration 3 validation (calcul auto Mifflin-St Jeor): backend pytest suite extended from 23 → 31 tests (added 8 new tests dans TestProfile pour PUT /api/user/profile + interaction avec PUT /api/user/calorie-goal + /auth/me). 31/31 PASS en 20.83s. Formule vérifiée: homme 30/180/75/modéré/prise de masse → 3080 kcal (BMR 1730 × 1.55 + 400 → 3081.5 arrondi 3080). Femme 25/165/60/léger/sèche → 1450 kcal (BMR 1345.25 × 1.375 - 400 → 1449.72 arrondi 1450). NOTE: la description initiale mentionnait ≈1409 kcal pour ce cas, mais le calcul mathématique correct est 1450 – code OK, description erronée. Validation 422 vérifiée pour: sex invalide, age hors [10,100], activity_level inconnu, fitness_goal inconnu, height_cm hors [120,230], weight_kg hors [30,250]. PUT /calorie-goal marque calorie_goal_auto=false ; PUT /profile subséquent remet auto=true et recalcule. Frontend Playwright (mobile 390×844, nouveau user): bannière testID=home-profile-banner visible sur profil vide → invisible une fois le profil rempli ; modal 'Profil santé' avec chips sexe/activité/objectif fonctionne, sauvegarde renvoie bien 3080 kcal avec label 'Objectif quotidien (calculé)' ; ligne santé affiche 'Homme · 30 ans · 180 cm · 75 kg' ; l'AI workout generator pré-remplit correctement le champ objectif avec 'prise de masse' (user.fitness_goal). Régression complète OK (auth, workouts CRUD/generate, meals CRUD/suggest, measurements, summary, history/stats, coach chat).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/auth/me sans token", "issue": "Renvoie 403 (HTTPBearer) au lieu de 401 – hérité iter 1, non-bloquant."},
+      {"endpoint": "Description iteration 3", "issue": "La description mentionne 1409 kcal pour femme 25/165/60/léger/sèche mais le calcul Mifflin-St Jeor donne 1449.72 → 1450 kcal. Le code est correct ; l'exemple dans le problem statement contient une erreur arithmétique. À corriger dans la doc."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "shadow* style props", "issue": "'shadow*' style props are deprecated. Use 'boxShadow'. Reference: bibliothèque UI (probablement src/components/ui). Warning console — non bloquant."},
+      {"component": "props.pointerEvents", "issue": "props.pointerEvents is deprecated. Use style.pointerEvents. Warning console — non bloquant."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(LOW) Corriger l'exemple femme 25/165/60/léger/sèche dans la description (résultat correct = 1450 kcal, pas 1409).",
+    "(LOW) Migrer shadow* props → boxShadow et props.pointerEvents → style.pointerEvents dans les composants UI partagés (avertissements console RN Web).",
+    "(LOW) Reporté iter 1/2: retourner 401 au lieu de 403 quand Authorization manque (personnaliser HTTPBearer)."
+  ],
+  "critical_code_review_comments": [
+    "compute_calorie_goal (server.py:104-112) applique correctement Mifflin-St Jeor avec +5/-161, facteur activité et ajustement objectif ; garde-fou min 1000 kcal et arrondi à 10 kcal via int(round(total/10)*10) — validé numériquement.",
+    "PUT /api/user/profile remet calorie_goal_auto=True à chaque appel — comportement conforme à la spec (le user peut ensuite forcer un manuel via PUT /calorie-goal).",
+    "public_user() expose bien les 6 nouveaux champs + calorie_goal_auto et les nouveaux users ont ces champs à None + calorie_goal=2000/auto=True à l'inscription.",
+    "profile.tsx: hasProfile check identique à celui du Home banner → cohérent ; le libellé Row bascule bien entre '(calculé)' et '(manuel)' selon calorie_goal_auto.",
+    "generate.tsx: goal state est initialisé à user?.fitness_goal ?? 'prise de masse' — pre-fill validé en UI.",
+    "server.py = 805 lignes ; devient volumineux, envisager un split en modules (auth/, workouts/, meals/, coach/, profile/) à la prochaine itération.",
+    "Pydantic Literal + Field(ge/le) sur ProfileUpdate assure les 422 attendus sans code custom — clean."
+  ],
+  "updated_files": ["/app/backend/tests/backend_test.py"],
+  "success_rate": {"backend": "100% (31/31)", "frontend": "100% smoke sur toutes les fonctionnalités iter 3 (banner, modal profil santé, calcul auto 3080 kcal, label calculé/manuel, pre-fill AI generator)"},
+  "seed_data_creation": "8 nouveaux users TEST_iter3_* créés via /auth/register pour tester le profil from scratch (pas de cleanup DB explicite — pattern déjà utilisé aux itérations précédentes).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration 3 fully green. Nouvelles testIDs: home-profile-banner (Home), profile-health-hint / profile-health-row / profile-health-save / profile-sex-{homme,femme} / profile-age / profile-height / profile-weight / profile-activity-{sédentaire,léger,modéré,actif,très actif} / profile-fitness-{prise de masse,sèche,maintien} / profile-goal-row / profile-goal-input / profile-goal-save (Profil). Nouveau backend endpoint: PUT /api/user/profile (auth) attend {sex, age 10-100, height_cm 120-230, weight_kg 30-250, activity_level, fitness_goal} et recalcule calorie_goal via Mifflin-St Jeor (facteurs activité 1.2/1.375/1.55/1.725/1.9, ajustements ±400/0), min 1000, arrondi à 10 kcal. PUT /calorie-goal marque désormais calorie_goal_auto=false ; PUT /profile le remet à true. UserPublic expose 7 nouveaux champs. Attention: l'exemple 'femme ≈ 1409 kcal' dans le brief est arithmétiquement faux, la bonne valeur est 1450 kcal — le code est correct."
+}

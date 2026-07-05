@@ -8,6 +8,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { colors, font, radius, spacing } from "@/src/theme";
 import { Button, Input } from "@/src/components/ui";
 import { api } from "@/src/api";
+import { useAuth } from "@/src/auth";
 
 const LEVELS = ["débutant", "intermédiaire", "avancé"] as const;
 const DURATIONS = [30, 45, 60, 90];
@@ -15,7 +16,8 @@ const EQUIP = ["poids du corps", "haltères", "salle de sport"];
 
 export default function GenerateWorkout() {
   const router = useRouter();
-  const [goal, setGoal] = useState("prise de masse");
+  const { user } = useAuth();
+  const [goal, setGoal] = useState(user?.fitness_goal ?? "prise de masse");
   const [level, setLevel] = useState<(typeof LEVELS)[number]>("intermédiaire");
   const [duration, setDuration] = useState(45);
   const [equipment, setEquipment] = useState("salle de sport");
