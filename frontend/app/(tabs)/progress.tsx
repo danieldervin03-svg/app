@@ -226,7 +226,7 @@ export default function ProgressScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.rowTitle}>
-                  {new Date(m.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
+                  Mensuration du {new Date(m.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
                 </Text>
                 <Text style={styles.rowSub}>
                   {[

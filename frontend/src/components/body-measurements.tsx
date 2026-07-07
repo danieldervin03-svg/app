@@ -153,18 +153,12 @@ export function BodyMeasurements({
                     <View style={[styles.dot, has && styles.dotFilled]} />
                     <View style={[styles.badge, styles.badgeRight]}>
                       <Text style={styles.badgeLabel}>{z.label}</Text>
-                      <Text style={[styles.badgeVal, !val && styles.badgeValEmpty]}>
-                        {val ? `${val} ${z.unit}` : "—"}
-                      </Text>
                     </View>
                   </>
                 ) : (
                   <>
                     <View style={[styles.badge, styles.badgeLeft]}>
                       <Text style={styles.badgeLabel}>{z.label}</Text>
-                      <Text style={[styles.badgeVal, !val && styles.badgeValEmpty]}>
-                        {val ? `${val} ${z.unit}` : "—"}
-                      </Text>
                     </View>
                     <View style={[styles.dot, has && styles.dotFilled]} />
                     <View style={styles.connector} />

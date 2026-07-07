@@ -817,8 +817,20 @@ async def latest_measurements(user: dict = Depends(get_current_user)):
 
 @api.post("/measurements", response_model=Measurement)
 async def create_measurement(body: MeasurementCreate, user: dict = Depends(get_current_user)):
-    m = Measurement(user_id=user["id"], **body.model_dump())
-    await db.measurements.insert_one(m.model_dump())
+    today_str = datetime.now(timezone.utc).date().isoformat()
+    existing = await db.measurements.find_one(
+        {"user_id": user["id"], "created_at": {"$regex": f"^{today_str}"}},
+        {"_id": 0},
+    )
+    if existing:
+        updates = {k: v for k, v in body.model_dump(exclude_none=True).items() if v not in (None, "")}
+        if updates:
+            await db.measurements.update_one({"id": existing["id"]}, {"$set": updates})
+        updated = await db.measurements.find_one({"id": existing["id"]}, {"_id": 0})
+        m = Measurement(**updated)
+    else:
+        m = Measurement(user_id=user["id"], **body.model_dump())
+        await db.measurements.insert_one(m.model_dump())
     # Trigger adaptive calorie adjustment if a weight was provided
     if body.weight_kg is not None:
         try:
