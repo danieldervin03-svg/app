@@ -266,6 +266,10 @@ export const api = {
 
   // History & Stats
   historyStats: () => request<HistoryStats>("/workouts/history/stats"),
+  exerciseHistory: (name: string) =>
+    request<{ exercise_name: string; points: ExerciseHistoryPoint[] }>(
+      `/exercises/history?name=${encodeURIComponent(name)}`,
+    ),
 
   // Coach
   coachMessages: (workoutId?: string) =>

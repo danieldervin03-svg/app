@@ -30,6 +30,9 @@ export default function WorkoutDetail() {
 
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState<Exercise | null>(null);
+  const [titleEditOpen, setTitleEditOpen] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [titleSaving, setTitleSaving] = useState(false);
   const [name, setName] = useState("");
   const [sets, setSets] = useState("");
   const [reps, setReps] = useState("");
@@ -164,6 +167,26 @@ export default function WorkoutDetail() {
     ]);
   };
 
+  const openTitleEdit = () => {
+    if (!workout) return;
+    setTitleDraft(workout.title);
+    setTitleEditOpen(true);
+  };
+
+  const saveTitleEdit = async () => {
+    if (!workout) return;
+    const t = titleDraft.trim();
+    if (!t) return;
+    setTitleSaving(true);
+    try {
+      const w = await api.updateWorkout(workout.id, { title: t });
+      setWorkout(w);
+      setTitleEditOpen(false);
+    } catch {} finally {
+      setTitleSaving(false);
+    }
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -185,7 +208,10 @@ export default function WorkoutDetail() {
         <Pressable onPress={() => router.back()} style={styles.iconBtn} testID="workout-back">
           <Ionicons name="chevron-back" size={22} color={colors.onSurface} />
         </Pressable>
-        <Text style={styles.headerTitle} numberOfLines={1}>{workout.title}</Text>
+        <Pressable onPress={openTitleEdit} style={styles.titlePressable} testID="workout-title-edit">
+          <Text style={styles.headerTitle} numberOfLines={1}>{workout.title}</Text>
+          <Ionicons name="pencil" size={15} color={colors.onSurfaceSecondary} style={{ marginLeft: 6 }} />
+        </Pressable>
         <Pressable onPress={deleteWorkout} style={styles.iconBtn} testID="workout-delete">
           <Ionicons name="trash-outline" size={20} color={colors.error} />
         </Pressable>
@@ -293,6 +319,22 @@ export default function WorkoutDetail() {
               <Input label="Notes" value={notes} onChangeText={setNotes} multiline testID="ex-notes-input" />
               <Button title="Enregistrer" onPress={saveExercise} loading={saving} testID="ex-save" />
               <Pressable onPress={() => setEditOpen(false)} style={{ alignItems: "center", padding: spacing.md }}>
+                <Text style={{ color: colors.onSurfaceSecondary }}>Annuler</Text>
+              </Pressable>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
+      <Modal visible={titleEditOpen} transparent animationType="slide" onRequestClose={() => setTitleEditOpen(false)}>
+        <View style={styles.modalBg}>
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ width: "100%" }}>
+            <View style={styles.modalCard}>
+              <View style={styles.drag} />
+              <Text style={styles.modalTitle}>Renommer la séance</Text>
+              <Input label="Nom" placeholder="Ex : Dos" value={titleDraft} onChangeText={setTitleDraft} testID="workout-title-input" />
+              <Button title="Enregistrer" onPress={saveTitleEdit} loading={titleSaving} testID="workout-title-save" />
+              <Pressable onPress={() => setTitleEditOpen(false)} style={{ alignItems: "center", padding: spacing.md }}>
                 <Text style={{ color: colors.onSurfaceSecondary }}>Annuler</Text>
               </Pressable>
             </View>
@@ -444,7 +486,8 @@ const styles = StyleSheet.create({
     padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.divider,
   },
   iconBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
-  headerTitle: { flex: 1, fontSize: font.lg, color: colors.onSurface, fontWeight: "500", textAlign: "center" },
+  headerTitle: { flexShrink: 1, fontSize: font.lg, color: colors.onSurface, fontWeight: "500" },
+  titlePressable: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center" },
   scroll: { padding: spacing.lg, paddingBottom: 120 },
   desc: { fontSize: font.base, color: colors.onSurfaceSecondary, marginBottom: spacing.sm },
   meta: { fontSize: font.sm, color: colors.onSurfaceTertiary, marginBottom: spacing.lg },
