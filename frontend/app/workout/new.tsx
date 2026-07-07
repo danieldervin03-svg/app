@@ -124,16 +124,20 @@ export default function NewWorkout() {
                 <View style={{ flex: 1 }}>
                   <Input label="Reps" value={d.reps} onChangeText={(v) => updateDraft(idx, "reps", v)} />
                 </View>
+              </View>
+              <View style={{ flexDirection: "row", gap: spacing.sm }}>
+                <View style={{ flex: 1 }}>
+                  <Input
+                    label="Poids cible (kg, facultatif)"
+                    keyboardType="decimal-pad"
+                    value={d.target_weight_kg}
+                    onChangeText={(v) => updateDraft(idx, "target_weight_kg", v)}
+                  />
+                </View>
                 <View style={{ flex: 1 }}>
                   <Input label="Repos (s)" keyboardType="numeric" value={d.rest_seconds} onChangeText={(v) => updateDraft(idx, "rest_seconds", v)} />
                 </View>
               </View>
-              <Input
-                label="Poids cible (kg, facultatif)"
-                keyboardType="decimal-pad"
-                value={d.target_weight_kg}
-                onChangeText={(v) => updateDraft(idx, "target_weight_kg", v)}
-              />
               <Input label="Notes (facultatif)" value={d.notes} onChangeText={(v) => updateDraft(idx, "notes", v)} />
             </View>
           ))}

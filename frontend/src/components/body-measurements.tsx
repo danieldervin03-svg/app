@@ -13,11 +13,12 @@ import { colors, font, radius, spacing } from "@/src/theme";
 import { Button, Input } from "@/src/components/ui";
 import { api, BodyField, LatestMeasurements } from "@/src/api";
 
-type ZoneKey = Exclude<BodyField, "weight_kg">;
+type ZoneKey = BodyField;
 
 type Zone = {
   key: ZoneKey;
   label: string;
+  unit: "cm" | "kg";
   // Y position as percentage of the image height (0 = top, 100 = bottom)
   y: number;
   // Which side of the body to render the badge
@@ -27,21 +28,33 @@ type Zone = {
 // Positions calibrated visually against the generated silhouettes (1:2 aspect)
 // Head 5-15%, shoulders 18-22%, chest 25-28%, waist 38-42%, hips 48-52%, thighs 60-72%, feet 98%
 const ZONES: Zone[] = [
-  { key: "chest_cm", label: "Torse", y: 27, side: "right" },
-  { key: "arm_cm", label: "Bras", y: 32, side: "left" },
-  { key: "waist_cm", label: "Taille", y: 39, side: "right" },
-  { key: "belly_cm", label: "Ventre", y: 44, side: "left" },
-  { key: "hips_cm", label: "Hanches", y: 50, side: "right" },
-  { key: "thigh_cm", label: "Cuisse", y: 65, side: "left" },
+  { key: "weight_kg", label: "Poids", unit: "kg", y: 12, side: "left" },
+  { key: "chest_cm", label: "Torse", unit: "cm", y: 27, side: "right" },
+  { key: "arm_cm", label: "Bras", unit: "cm", y: 32, side: "left" },
+  { key: "waist_cm", label: "Taille", unit: "cm", y: 39, side: "right" },
+  { key: "belly_cm", label: "Ventre", unit: "cm", y: 44, side: "left" },
+  { key: "hips_cm", label: "Hanches", unit: "cm", y: 50, side: "right" },
+  { key: "thigh_cm", label: "Cuisse", unit: "cm", y: 65, side: "left" },
 ];
 
 const LABEL_FR: Record<ZoneKey, string> = {
+  weight_kg: "Poids",
   chest_cm: "Torse",
   arm_cm: "Bras",
   waist_cm: "Taille",
   belly_cm: "Ventre",
   hips_cm: "Hanches",
   thigh_cm: "Cuisse",
+};
+
+const RANGE: Record<ZoneKey, { min: number; max: number }> = {
+  weight_kg: { min: 30, max: 250 },
+  chest_cm: { min: 10, max: 200 },
+  arm_cm: { min: 10, max: 200 },
+  waist_cm: { min: 10, max: 200 },
+  belly_cm: { min: 10, max: 200 },
+  hips_cm: { min: 10, max: 200 },
+  thigh_cm: { min: 10, max: 200 },
 };
 
 const MALE_IMG = require("@/assets/body/male.png");
@@ -83,8 +96,9 @@ export function BodyMeasurements({
   const saveZone = async () => {
     if (!selected) return;
     const n = parseFloat(value.replace(",", "."));
-    if (!Number.isFinite(n) || n < 10 || n > 200) {
-      setError("Entrez une valeur entre 10 et 200 cm");
+    const { min, max } = RANGE[selected.key];
+    if (!Number.isFinite(n) || n < min || n > max) {
+      setError(`Entrez une valeur entre ${min} et ${max} ${selected.unit}`);
       return;
     }
     setSaving(true);
@@ -140,7 +154,7 @@ export function BodyMeasurements({
                     <View style={[styles.badge, styles.badgeRight]}>
                       <Text style={styles.badgeLabel}>{z.label}</Text>
                       <Text style={[styles.badgeVal, !val && styles.badgeValEmpty]}>
-                        {val ? `${val} cm` : "—"}
+                        {val ? `${val} ${z.unit}` : "—"}
                       </Text>
                     </View>
                   </>
@@ -149,7 +163,7 @@ export function BodyMeasurements({
                     <View style={[styles.badge, styles.badgeLeft]}>
                       <Text style={styles.badgeLabel}>{z.label}</Text>
                       <Text style={[styles.badgeVal, !val && styles.badgeValEmpty]}>
-                        {val ? `${val} cm` : "—"}
+                        {val ? `${val} ${z.unit}` : "—"}
                       </Text>
                     </View>
                     <View style={[styles.dot, has && styles.dotFilled]} />
@@ -177,7 +191,7 @@ export function BodyMeasurements({
               <Text style={styles.modalTitle}>{selected ? LABEL_FR[selected.key] : ""}</Text>
               {selected && latest?.[selected.key] ? (
                 <Text style={styles.modalSub}>
-                  Dernière mesure : {latest[selected.key]!.value} cm ·{" "}
+                  Dernière mesure : {latest[selected.key]!.value} {selected.unit} ·{" "}
                   {new Date(latest[selected.key]!.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}
                 </Text>
               ) : (
@@ -185,7 +199,7 @@ export function BodyMeasurements({
               )}
 
               <Input
-                label="Mesure (cm)"
+                label={`Mesure (${selected?.unit ?? "cm"})`}
                 keyboardType="decimal-pad"
                 value={value}
                 onChangeText={setValue}

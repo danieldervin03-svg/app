@@ -60,14 +60,6 @@ export type User = {
   created_at: string;
 };
 
-export type Deload = {
-  exercise_id: string;
-  exercise_name: string;
-  consecutive_failures: number;
-  new_target_weight_kg: number;
-  reason: string;
-};
-
 export type ExerciseHistoryPoint = {
   performed_at: string;
   weight_kg: number | null;
@@ -242,7 +234,7 @@ export const api = {
     equipment: string;
   }) => request<Workout[]>("/workouts/generate-program", { method: "POST", body }),
   logSession: (id: string, entries: LogEntry[]) =>
-    request<Workout>(`/workouts/${id}/log`, { method: "POST", body: { entries } }),
+    request<{ workout: Workout }>(`/workouts/${id}/log`, { method: "POST", body: { entries } }),
 
   // Meals
   listMeals: (date?: string) =>

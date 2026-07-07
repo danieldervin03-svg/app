@@ -15,7 +15,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#000000"
+        "backgroundColor": "#65A30D"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.emergent.smartfitnesshub.jipzp5"

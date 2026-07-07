@@ -6,7 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { colors, font, radius, spacing } from "@/src/theme";
 import { Button, Input } from "@/src/components/ui";
 import { CoachChat } from "@/src/components/coach-chat";
-import { api, Deload, Exercise, ExerciseHistoryPoint, LogEntry, Workout } from "@/src/api";
+import { api, Exercise, ExerciseHistoryPoint, LogEntry, Workout } from "@/src/api";
 
 type Difficulty = "facile" | "reussi" | "echec";
 const DIFFICULTIES: { key: Difficulty; label: string; color: string; icon: any }[] = [
@@ -24,7 +24,6 @@ export default function WorkoutDetail() {
   const [logOpen, setLogOpen] = useState(false);
   const [logSaving, setLogSaving] = useState(false);
   const [logEntries, setLogEntries] = useState<Record<string, LogEntry>>({});
-  const [deloads, setDeloads] = useState<Deload[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyExName, setHistoryExName] = useState<string>("");
   const [historyPoints, setHistoryPoints] = useState<ExerciseHistoryPoint[]>([]);
@@ -134,7 +133,6 @@ export default function WorkoutDetail() {
       const entries = Object.values(logEntries);
       const res = await api.logSession(workout.id, entries);
       setWorkout(res.workout);
-      setDeloads(res.deloads);
       setLogOpen(false);
     } catch {} finally {
       setLogSaving(false);
@@ -224,24 +222,7 @@ export default function WorkoutDetail() {
           </Pressable>
         </View>
 
-        {deloads.length > 0 ? (
-          <View style={styles.deloadBanner} testID="deload-banner">
-            <View style={styles.deloadIcon}>
-              <Ionicons name="warning" size={16} color="#FFF" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.deloadTitle}>Deload appliqué</Text>
-              {deloads.map((d) => (
-                <Text key={d.exercise_id} style={styles.deloadTxt}>
-                  {d.exercise_name} : {d.new_target_weight_kg} kg (−10 %)
-                </Text>
-              ))}
-            </View>
-            <Pressable onPress={() => setDeloads([])}>
-              <Ionicons name="close" size={18} color={colors.onSurfaceSecondary} />
-            </Pressable>
-          </View>
-        ) : null}
+
 
         {workout.exercises.map((ex) => {
           const diffMeta = ex.last_difficulty
@@ -513,18 +494,6 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
   },
   diffBtnTxt: { fontSize: font.sm, color: colors.onSurface, fontWeight: "500" },
-  deloadBanner: {
-    flexDirection: "row", alignItems: "center", gap: spacing.md,
-    padding: spacing.md, marginBottom: spacing.md,
-    backgroundColor: "#FEF3C7", borderRadius: radius.md,
-    borderWidth: 1, borderColor: colors.warning,
-  },
-  deloadIcon: {
-    width: 28, height: 28, borderRadius: 14,
-    backgroundColor: colors.warning, alignItems: "center", justifyContent: "center",
-  },
-  deloadTitle: { fontSize: font.base, color: "#78350F", fontWeight: "500" },
-  deloadTxt: { fontSize: font.sm, color: "#78350F", marginTop: 2 },
   chartBox: {
     flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between",
     gap: 4, height: 140, padding: spacing.md, backgroundColor: colors.surfaceSecondary,

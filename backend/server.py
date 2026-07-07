@@ -16,7 +16,8 @@ import logging
 import bcrypt
 import jwt
 
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+from google import genai
+from google.genai import types as genai_types
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -26,7 +27,9 @@ DB_NAME = os.environ["DB_NAME"]
 JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALGORITHM = os.environ["JWT_ALGORITHM"]
 JWT_EXPIRATION_HOURS = int(os.environ["JWT_EXPIRATION_HOURS"])
-EMERGENT_LLM_KEY = os.environ["EMERGENT_LLM_KEY"]
+GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
@@ -402,15 +405,18 @@ async def update_profile(body: ProfileUpdate, user: dict = Depends(get_current_u
 # ============================================================================
 
 async def ask_llm_json(system: str, user_prompt: str, session_id: str) -> dict:
-    """Ask Claude for a JSON response. Robust to code fences."""
-    chat = LlmChat(
-        api_key=EMERGENT_LLM_KEY,
-        session_id=session_id,
-        system_message=system,
-    ).with_model("openai", "gpt-5.4")
-
-    reply = await chat.send_message(UserMessage(text=user_prompt))
-    text = reply.strip() if isinstance(reply, str) else str(reply).strip()
+    """Ask Gemini for a JSON response. Robust to code fences."""
+    try:
+        response = await gemini_client.aio.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=user_prompt,
+            config=genai_types.GenerateContentConfig(system_instruction=system),
+        )
+        reply = response.text or ""
+    except Exception as e:
+        logger.error("Gemini call error (%s): %s", session_id, e)
+        raise HTTPException(502, "Réponse IA indisponible, veuillez réessayer")
+    text = reply.strip()
 
     # strip code fences
     if text.startswith("```"):
@@ -615,22 +621,6 @@ async def generate_program(body: ProgramGenerateInput, user: dict = Depends(get_
 # Session logging + progressive overload
 # ============================================================================
 
-def _next_target_after_log(prev_weight: Optional[float], difficulty: str) -> Optional[float]:
-    """Apply progressive overload rule based on user difficulty feedback."""
-    if prev_weight is None or prev_weight <= 0:
-        return prev_weight
-    if difficulty == "facile":
-        # +5% weight
-        return round(prev_weight * 1.05 * 2) / 2  # nearest 0.5 kg
-    if difficulty == "reussi":
-        # +2.5% weight
-        return round(prev_weight * 1.025 * 2) / 2
-    if difficulty == "echec":
-        # -5% weight
-        return max(0.0, round(prev_weight * 0.95 * 2) / 2)
-    return prev_weight
-
-
 @api.post("/workouts/{workout_id}/log")
 async def log_session(workout_id: str, body: SessionLogInput, user: dict = Depends(get_current_user)):
     doc = await db.workouts.find_one({"id": workout_id, "user_id": user["id"]}, {"_id": 0})
@@ -639,24 +629,16 @@ async def log_session(workout_id: str, body: SessionLogInput, user: dict = Depen
 
     exercises = doc.get("exercises", [])
     ex_by_id = {e["id"]: e for e in exercises}
-    deloads: List[dict] = []
 
     for entry in body.entries:
         ex = ex_by_id.get(entry.exercise_id)
         if not ex:
             continue
         ex["last_difficulty"] = entry.difficulty
-        prev_target = ex.get("target_weight_kg")
         if entry.weight_kg is not None:
             ex["last_weight_kg"] = entry.weight_kg
-            base_weight = entry.weight_kg
-        else:
-            base_weight = prev_target
         if entry.reps_done is not None:
             ex["last_reps_done"] = entry.reps_done
-        new_target = _next_target_after_log(base_weight, entry.difficulty)
-        if new_target is not None:
-            ex["target_weight_kg"] = new_target
 
     # Save log doc + mark performed
     log_doc = {
@@ -672,44 +654,8 @@ async def log_session(workout_id: str, body: SessionLogInput, user: dict = Depen
         {"$set": {"exercises": exercises, "performed_at": now_utc()}},
     )
 
-    # Intelligent deload detection: 3 consecutive "echec" per exercise across all past logs
-    past_logs = await db.session_logs.find(
-        {"user_id": user["id"], "workout_id": workout_id},
-        {"_id": 0},
-    ).sort("performed_at", -1).to_list(20)
-    deloaded_ids: set = set()
-    for entry in body.entries:
-        if entry.exercise_id in deloaded_ids:
-            continue
-        ex = ex_by_id.get(entry.exercise_id)
-        if not ex:
-            continue
-        streak = 0
-        for lg in past_logs:  # most recent first
-            found = next((e for e in lg["entries"] if e["exercise_id"] == entry.exercise_id), None)
-            if not found:
-                continue
-            if found["difficulty"] == "echec":
-                streak += 1
-            else:
-                break
-        if streak >= 3 and ex.get("target_weight_kg"):
-            deload_target = round(ex["target_weight_kg"] * 0.9 * 2) / 2  # -10%
-            ex["target_weight_kg"] = deload_target
-            deloaded_ids.add(entry.exercise_id)
-            deloads.append({
-                "exercise_id": ex["id"],
-                "exercise_name": ex["name"],
-                "consecutive_failures": streak,
-                "new_target_weight_kg": deload_target,
-                "reason": f"3 échecs consécutifs — deload automatique de 10% suggéré ({deload_target} kg).",
-            })
-
-    if deloads:
-        await db.workouts.update_one({"id": workout_id}, {"$set": {"exercises": exercises}})
-
     updated = await db.workouts.find_one({"id": workout_id}, {"_id": 0})
-    return {"workout": Workout(**updated).model_dump(), "deloads": deloads}
+    return {"workout": Workout(**updated).model_dump()}
 
 
 @api.get("/workouts/{workout_id}/logs")
@@ -1298,14 +1244,6 @@ async def coach_chat(body: CoachChatInput, user: dict = Depends(get_current_user
         f"\n\nContexte :\n{context}"
     )
 
-    session_id = f"coach-{user['id']}-{body.workout_id or 'general'}"
-    chat = LlmChat(
-        api_key=EMERGENT_LLM_KEY,
-        session_id=session_id,
-        system_message=system,
-    ).with_model("openai", "gpt-5.4")
-
-    # Compose the conversation as one prompt (session_id keeps continuity server-side too)
     convo_lines = []
     for m in hist_docs[:-1]:  # exclude the just-inserted user msg
         prefix = "Utilisateur" if m["role"] == "user" else "Coach"
@@ -1314,8 +1252,12 @@ async def coach_chat(body: CoachChatInput, user: dict = Depends(get_current_user
     prompt = "\n".join(convo_lines)
 
     try:
-        reply = await chat.send_message(UserMessage(text=prompt))
-        reply_text = reply.strip() if isinstance(reply, str) else str(reply).strip()
+        response = await gemini_client.aio.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config=genai_types.GenerateContentConfig(system_instruction=system),
+        )
+        reply_text = (response.text or "").strip()
     except Exception as e:
         logger.error("Coach chat error: %s", e)
         raise HTTPException(502, "Le coach IA est momentanément indisponible")

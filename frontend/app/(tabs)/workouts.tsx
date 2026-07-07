@@ -7,6 +7,17 @@ import { colors, font, radius, spacing } from "@/src/theme";
 import { EmptyState } from "@/src/components/ui";
 import { api, Workout } from "@/src/api";
 
+function ProgressTip() {
+  return (
+    <View style={styles.tip} testID="workouts-progress-tip">
+      <Ionicons name="bulb-outline" size={18} color={colors.brandPrimary} />
+      <Text style={styles.tipTxt}>
+        Pensez à rajouter une répétition ou à augmenter le poids pour les exercices réussis.
+      </Text>
+    </View>
+  );
+}
+
 export default function WorkoutsScreen() {
   const router = useRouter();
   const [items, setItems] = useState<Workout[]>([]);
@@ -51,6 +62,8 @@ export default function WorkoutsScreen() {
           </Pressable>
         </View>
       </View>
+
+      <ProgressTip />
 
       {loading ? (
         <ActivityIndicator color={colors.brandPrimary} style={{ marginTop: spacing.xxl }} />
@@ -115,6 +128,12 @@ export default function WorkoutsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
+  tip: {
+    flexDirection: "row", alignItems: "flex-start", gap: spacing.sm,
+    marginHorizontal: spacing.lg, marginBottom: spacing.md,
+    padding: spacing.md, backgroundColor: colors.brandTertiary, borderRadius: radius.md,
+  },
+  tipTxt: { flex: 1, fontSize: font.sm, color: colors.onSurface, lineHeight: 18 },
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md,

@@ -1,10 +1,10 @@
 import React, { useCallback, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Modal, Pressable, KeyboardAvoidingView, Platform, RefreshControl } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { colors, font, radius, spacing } from "@/src/theme";
-import { Button, Input, EmptyState } from "@/src/components/ui";
+import { EmptyState } from "@/src/components/ui";
 import { api, CalorieRecommendation, HistoryStats, Measurement } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { BodyMeasurements } from "@/src/components/body-measurements";
@@ -46,18 +46,7 @@ export default function ProgressScreen() {
   const [stats, setStats] = useState<HistoryStats | null>(null);
   const [reco, setReco] = useState<CalorieRecommendation | null>(null);
   const [applyingReco, setApplyingReco] = useState(false);
-  const [open, setOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [weight, setWeight] = useState("");
-  const [chest, setChest] = useState("");
-  const [waist, setWaist] = useState("");
-  const [belly, setBelly] = useState("");
-  const [hips, setHips] = useState("");
-  const [arm, setArm] = useState("");
-  const [thigh, setThigh] = useState("");
-  const [note, setNote] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -78,43 +67,6 @@ export default function ProgressScreen() {
     setRefreshing(true);
     await load();
     setRefreshing(false);
-  };
-
-  const parseNum = (s: string): number | null => {
-    const t = s.trim().replace(",", ".");
-    if (!t) return null;
-    const n = parseFloat(t);
-    return Number.isFinite(n) ? n : null;
-  };
-
-  const submit = async () => {
-    setError(null);
-    const body = {
-      weight_kg: parseNum(weight),
-      chest_cm: parseNum(chest),
-      waist_cm: parseNum(waist),
-      belly_cm: parseNum(belly),
-      hips_cm: parseNum(hips),
-      arm_cm: parseNum(arm),
-      thigh_cm: parseNum(thigh),
-      note: note.trim(),
-    };
-    if (Object.values(body).every((v) => v == null || v === "")) {
-      setError("Renseignez au moins une valeur");
-      return;
-    }
-    setSaving(true);
-    try {
-      await api.createMeasurement(body);
-      setWeight(""); setChest(""); setWaist(""); setBelly(""); setHips(""); setArm(""); setThigh(""); setNote("");
-      setOpen(false);
-      await load();
-      await refresh(); // in case backend auto-adjusted calorie_goal
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setSaving(false);
-    }
   };
 
   const applyReco = async () => {
@@ -138,9 +90,6 @@ export default function ProgressScreen() {
     <SafeAreaView style={styles.container} testID="progress-screen">
       <View style={styles.header}>
         <Text style={styles.title}>Progrès</Text>
-        <Pressable onPress={() => setOpen(true)} style={styles.addBtn} testID="progress-add">
-          <Ionicons name="add" size={22} color={colors.onBrandPrimary} />
-        </Pressable>
       </View>
 
       <ScrollView
@@ -299,32 +248,6 @@ export default function ProgressScreen() {
           ))
         )}
       </ScrollView>
-
-      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
-        <View style={styles.modalBg}>
-          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ width: "100%", maxHeight: "90%" }}>
-            <View style={styles.modalCard}>
-              <View style={styles.dragHandle} />
-              <Text style={styles.modalTitle}>Nouvelle mesure</Text>
-              <ScrollView style={{ maxHeight: 480 }}>
-                <Input label="Poids (kg)" placeholder="Ex : 72.5" keyboardType="decimal-pad" value={weight} onChangeText={setWeight} testID="measure-weight" />
-                <Input label="Poitrine (cm)" keyboardType="decimal-pad" value={chest} onChangeText={setChest} testID="measure-chest" />
-                <Input label="Taille (cm)" keyboardType="decimal-pad" value={waist} onChangeText={setWaist} testID="measure-waist" />
-                <Input label="Ventre (cm)" keyboardType="decimal-pad" value={belly} onChangeText={setBelly} testID="measure-belly" />
-                <Input label="Hanches (cm)" keyboardType="decimal-pad" value={hips} onChangeText={setHips} testID="measure-hips" />
-                <Input label="Bras (cm)" keyboardType="decimal-pad" value={arm} onChangeText={setArm} testID="measure-arm" />
-                <Input label="Cuisse (cm)" keyboardType="decimal-pad" value={thigh} onChangeText={setThigh} testID="measure-thigh" />
-                <Input label="Note (facultatif)" value={note} onChangeText={setNote} />
-              </ScrollView>
-              {error ? <Text style={{ color: colors.error, textAlign: "center" }}>{error}</Text> : null}
-              <Button title="Enregistrer" onPress={submit} loading={saving} testID="measure-save" style={{ marginTop: spacing.md }} />
-              <Pressable onPress={() => setOpen(false)} style={{ alignItems: "center", padding: spacing.md }}>
-                <Text style={{ color: colors.onSurfaceSecondary }}>Annuler</Text>
-              </Pressable>
-            </View>
-          </KeyboardAvoidingView>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
