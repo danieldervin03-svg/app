@@ -28,12 +28,12 @@ type Zone = {
 // Positions calibrated visually against the generated silhouettes (1:2 aspect)
 // Head 5-15%, shoulders 18-22%, chest 25-28%, waist 38-42%, hips 48-52%, thighs 60-72%, feet 98%
 const ZONES: Zone[] = [
-  { key: "weight_kg", label: "Poids", unit: "kg", y: 12, side: "left" },
-  { key: "chest_cm", label: "Torse", unit: "cm", y: 27, side: "right" },
-  { key: "arm_cm", label: "Bras", unit: "cm", y: 32, side: "left" },
-  { key: "waist_cm", label: "Taille", unit: "cm", y: 39, side: "right" },
-  { key: "belly_cm", label: "Ventre", unit: "cm", y: 44, side: "left" },
-  { key: "hips_cm", label: "Hanches", unit: "cm", y: 50, side: "right" },
+  { key: "weight_kg", label: "Poids", unit: "kg", y: 11, side: "left" },
+  { key: "chest_cm", label: "Torse", unit: "cm", y: 25, side: "right" },
+  { key: "arm_cm", label: "Bras", unit: "cm", y: 31, side: "left" },
+  { key: "waist_cm", label: "Taille", unit: "cm", y: 37, side: "right" },
+  { key: "belly_cm", label: "Ventre", unit: "cm", y: 45, side: "right" },
+  { key: "hips_cm", label: "Hanches", unit: "cm", y: 53, side: "right" },
   { key: "thigh_cm", label: "Cuisse", unit: "cm", y: 65, side: "left" },
 ];
 
