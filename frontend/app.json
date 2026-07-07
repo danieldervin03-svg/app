@@ -39,6 +39,13 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "caa9fa17-571f-49a7-af9e-986a519255a0"
+      }
+    },
+    "owner": "bodypilotdaniel"
   }
 }
