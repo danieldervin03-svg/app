@@ -17,8 +17,7 @@ import logging
 import bcrypt
 import jwt
 
-from google import genai
-from google.genai import types as genai_types
+from anthropic import AsyncAnthropic
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -28,9 +27,10 @@ DB_NAME = os.environ["DB_NAME"]
 JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALGORITHM = os.environ["JWT_ALGORITHM"]
 JWT_EXPIRATION_HOURS = int(os.environ["JWT_EXPIRATION_HOURS"])
-GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
-gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
+ANTHROPIC_MODEL_TEXT = os.environ.get("ANTHROPIC_MODEL_TEXT", "claude-haiku-4-5-20251001")
+ANTHROPIC_MODEL_VISION = os.environ.get("ANTHROPIC_MODEL_VISION", "claude-sonnet-5")
+anthropic_client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
@@ -423,23 +423,30 @@ async def ask_llm_json(
     image_bytes: Optional[bytes] = None,
     image_mime: str = "image/jpeg",
 ) -> dict:
-    """Ask Gemini for a JSON response. Robust to code fences. Optionally attach an image (vision)."""
+    """Ask Claude for a JSON response. Robust to code fences. Optionally attach an image (vision)."""
     try:
         if image_bytes:
-            contents = [
-                genai_types.Part.from_bytes(data=image_bytes, mime_type=image_mime),
-                user_prompt,
+            image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+            content = [
+                {
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": image_mime, "data": image_b64},
+                },
+                {"type": "text", "text": user_prompt},
             ]
+            model = ANTHROPIC_MODEL_VISION
         else:
-            contents = user_prompt
-        response = await gemini_client.aio.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=contents,
-            config=genai_types.GenerateContentConfig(system_instruction=system),
+            content = user_prompt
+            model = ANTHROPIC_MODEL_TEXT
+        response = await anthropic_client.messages.create(
+            model=model,
+            max_tokens=1500,
+            system=system,
+            messages=[{"role": "user", "content": content}],
         )
-        reply = response.text or ""
+        reply = "".join(b.text for b in response.content if getattr(b, "type", None) == "text")
     except Exception as e:
-        logger.error("Gemini call error (%s): %s", session_id, e)
+        logger.error("Claude call error (%s): %s", session_id, e)
         raise HTTPException(502, "Réponse IA indisponible, veuillez réessayer")
     text = reply.strip()
 
@@ -1369,27 +1376,15 @@ async def coach_chat(body: CoachChatInput, user: dict = Depends(get_current_user
     prompt = "\n".join(convo_lines)
 
     try:
-        response = await gemini_client.aio.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-            config=genai_types.GenerateContentConfig(system_instruction=system),
+        response = await anthropic_client.messages.create(
+            model=ANTHROPIC_MODEL_TEXT,
+            max_tokens=800,
+            system=system,
+            messages=[{"role": "user", "content": prompt}],
         )
-        try:
-            reply_text = (response.text or "").strip()
-        except Exception:
-            reply_text = ""
+        reply_text = "".join(b.text for b in response.content if getattr(b, "type", None) == "text").strip()
         if not reply_text:
-            # Fallback: try to pull text directly from parts before giving up
-            try:
-                candidates = getattr(response, "candidates", None) or []
-                parts = getattr(getattr(candidates[0], "content", None), "parts", None) or []
-                reply_text = "".join(getattr(p, "text", "") or "" for p in parts).strip()
-            except Exception:
-                reply_text = ""
-        if not reply_text:
-            feedback = getattr(response, "prompt_feedback", None)
-            block_reason = getattr(feedback, "block_reason", None) if feedback else None
-            logger.error("Coach chat: empty reply (block_reason=%s)", block_reason)
+            logger.error("Coach chat: empty reply from Claude")
             raise HTTPException(422, "Cette demande n'a pas pu être traitée, essaie de la reformuler.")
     except HTTPException:
         raise
