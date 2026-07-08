@@ -1273,19 +1273,22 @@ async def coach_chat(body: CoachChatInput, user: dict = Depends(get_current_user
             contents=prompt,
             config=genai_types.GenerateContentConfig(system_instruction=system),
         )
-        block_reason = getattr(getattr(response, "prompt_feedback", None), "block_reason", None)
-        if block_reason:
-            logger.warning("Coach chat blocked by Gemini safety filters: %s", block_reason)
-            raise HTTPException(422, "Cette demande n'a pas pu être traitée, essaie de la reformuler.")
-        candidates = getattr(response, "candidates", None) or []
-        if not candidates:
-            logger.error("Coach chat: no candidates in Gemini response")
-            raise HTTPException(502, "Le coach IA est momentanément indisponible")
-        finish_reason = getattr(candidates[0], "finish_reason", None)
-        parts = getattr(getattr(candidates[0], "content", None), "parts", None) or []
-        reply_text = "".join(getattr(p, "text", "") or "" for p in parts).strip()
+        try:
+            reply_text = (response.text or "").strip()
+        except Exception:
+            reply_text = ""
         if not reply_text:
-            logger.error("Coach chat: empty reply (finish_reason=%s)", finish_reason)
+            # Fallback: try to pull text directly from parts before giving up
+            try:
+                candidates = getattr(response, "candidates", None) or []
+                parts = getattr(getattr(candidates[0], "content", None), "parts", None) or []
+                reply_text = "".join(getattr(p, "text", "") or "" for p in parts).strip()
+            except Exception:
+                reply_text = ""
+        if not reply_text:
+            feedback = getattr(response, "prompt_feedback", None)
+            block_reason = getattr(feedback, "block_reason", None) if feedback else None
+            logger.error("Coach chat: empty reply (block_reason=%s)", block_reason)
             raise HTTPException(422, "Cette demande n'a pas pu être traitée, essaie de la reformuler.")
     except HTTPException:
         raise
