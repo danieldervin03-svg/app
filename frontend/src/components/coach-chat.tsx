@@ -126,9 +126,32 @@ export function CoachChat({
                 <View style={styles.emptyIcon}>
                   <Ionicons name="sparkles-outline" size={28} color={colors.onBrandTertiary} />
                 </View>
+                <Text style={styles.emptyTitle}>Bonjour, je suis votre Coach IA 👋</Text>
                 <Text style={styles.emptyTxt}>
-                  Posez une question à votre coach : forme, remplacement d’un exercice, récupération, progression…
+                  Je suis là pour discuter avec vous de votre entraînement : la forme d'un exercice, comment le
+                  remplacer, votre récupération, votre progression, ou toute question sur votre pratique sportive.
                 </Text>
+                <Text style={styles.emptyNote}>
+                  Petite précision : je ne crée pas de programme directement ici — pour ça, utilisez le bouton
+                  « Générer un programme IA » sur l'écran Entraînements. Mais je peux vous aider à savoir quoi lui
+                  demander !
+                </Text>
+                <View style={styles.suggestions}>
+                  {[
+                    "Comment améliorer ma forme au squat ?",
+                    "Par quoi remplacer les tractions ?",
+                    "Comment bien récupérer après une séance ?",
+                  ].map((s) => (
+                    <Pressable
+                      key={s}
+                      onPress={() => setInput(s)}
+                      style={styles.suggestionChip}
+                      testID={`coach-suggestion-${s.slice(0, 8)}`}
+                    >
+                      <Text style={styles.suggestionTxt}>{s}</Text>
+                    </Pressable>
+                  ))}
+                </View>
               </View>
             ) : (
               messages.map((m) => (
@@ -213,6 +236,17 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center",
   },
   emptyTxt: { fontSize: font.base, color: colors.onSurfaceSecondary, textAlign: "center" },
+  emptyTitle: { fontSize: font.lg, color: colors.onSurface, fontWeight: "600", textAlign: "center" },
+  emptyNote: {
+    fontSize: font.sm, color: colors.onSurfaceSecondary, textAlign: "center",
+    backgroundColor: colors.brandTertiary, padding: spacing.sm, borderRadius: radius.md,
+  },
+  suggestions: { width: "100%", gap: spacing.sm, marginTop: spacing.sm },
+  suggestionChip: {
+    borderWidth: 1, borderColor: colors.brandSecondary, borderRadius: radius.pill,
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.md,
+  },
+  suggestionTxt: { fontSize: font.sm, color: colors.brandPrimary, textAlign: "center" },
   bubbleRow: { flexDirection: "row", marginBottom: spacing.sm },
   rowLeft: { justifyContent: "flex-start" },
   rowRight: { justifyContent: "flex-end" },
