@@ -18,7 +18,10 @@
         "backgroundColor": "#65A30D"
       },
       "edgeToEdgeEnabled": true,
-      "package": "bodypilot.app"
+      "package": "bodypilot.app",
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -49,7 +52,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "caa9fa17-571f-49a7-af9e-986a519255a0"
+        "projectId": "c3bdbbfb-8f5e-478a-a36a-1fa3a8cc425e"
       }
     },
     "owner": "bodypilotdaniel"
