@@ -12,6 +12,7 @@ from pathlib import Path
 import os
 import uuid
 import json
+import base64
 import logging
 import bcrypt
 import jwt
@@ -203,6 +204,9 @@ class Meal(BaseModel):
     user_id: str
     name: str
     calories: int
+    protein_g: Optional[float] = None
+    carbs_g: Optional[float] = None
+    fat_g: Optional[float] = None
     meal_type: Literal["petit-déjeuner", "déjeuner", "dîner", "collation"]
     date: str  # YYYY-MM-DD
     created_at: str = Field(default_factory=now_utc)
@@ -211,6 +215,9 @@ class Meal(BaseModel):
 class MealCreate(BaseModel):
     name: str
     calories: int = Field(ge=0, le=5000)
+    protein_g: Optional[float] = Field(default=None, ge=0, le=500)
+    carbs_g: Optional[float] = Field(default=None, ge=0, le=900)
+    fat_g: Optional[float] = Field(default=None, ge=0, le=400)
     meal_type: Literal["petit-déjeuner", "déjeuner", "dîner", "collation"]
     date: Optional[str] = None
 
@@ -223,6 +230,11 @@ class MealSuggestInput(BaseModel):
 
 class MealEstimateInput(BaseModel):
     description: str = Field(min_length=2, max_length=500)
+
+
+class MenuScanInput(BaseModel):
+    image_base64: str
+    mime_type: str = "image/jpeg"
 
 
 class Measurement(BaseModel):
@@ -404,12 +416,25 @@ async def update_profile(body: ProfileUpdate, user: dict = Depends(get_current_u
 # LLM helper
 # ============================================================================
 
-async def ask_llm_json(system: str, user_prompt: str, session_id: str) -> dict:
-    """Ask Gemini for a JSON response. Robust to code fences."""
+async def ask_llm_json(
+    system: str,
+    user_prompt: str,
+    session_id: str,
+    image_bytes: Optional[bytes] = None,
+    image_mime: str = "image/jpeg",
+) -> dict:
+    """Ask Gemini for a JSON response. Robust to code fences. Optionally attach an image (vision)."""
     try:
+        if image_bytes:
+            contents = [
+                genai_types.Part.from_bytes(data=image_bytes, mime_type=image_mime),
+                user_prompt,
+            ]
+        else:
+            contents = user_prompt
         response = await gemini_client.aio.models.generate_content(
             model=GEMINI_MODEL,
-            contents=user_prompt,
+            contents=contents,
             config=genai_types.GenerateContentConfig(system_instruction=system),
         )
         reply = response.text or ""
@@ -715,6 +740,9 @@ async def create_meal(body: MealCreate, user: dict = Depends(get_current_user)):
         user_id=user["id"],
         name=body.name.strip(),
         calories=body.calories,
+        protein_g=body.protein_g,
+        carbs_g=body.carbs_g,
+        fat_g=body.fat_g,
         meal_type=body.meal_type,
         date=body.date or datetime.now(timezone.utc).strftime("%Y-%m-%d"),
     )
@@ -741,8 +769,8 @@ async def suggest_meals(body: MealSuggestInput, user: dict = Depends(get_current
         f"Calories cibles totales par repas: environ {max(150, body.remaining_calories)} kcal.\n"
         f"Préférences/contraintes: {body.preferences or 'aucune'}.\n\n"
         "Réponds avec ce schéma JSON exact:\n"
-        '{"suggestions": [{"name": "string", "calories": int, "ingredients": ["string", ...], '
-        '"description": "string court"}]}'
+        '{"suggestions": [{"name": "string", "calories": int, "protein_g": number, "carbs_g": number, '
+        '"fat_g": number, "ingredients": ["string", ...], "description": "string court"}]}'
     )
     data = await ask_llm_json(system, prompt, f"gen-meal-{user['id']}-{uuid.uuid4()}")
     suggestions = data.get("suggestions", [])[:3]
@@ -751,6 +779,9 @@ async def suggest_meals(body: MealSuggestInput, user: dict = Depends(get_current
         cleaned.append({
             "name": str(s.get("name", "Repas"))[:80],
             "calories": int(s.get("calories", 0)),
+            "protein_g": round(max(0.0, float(s.get("protein_g", 0) or 0)), 1),
+            "carbs_g": round(max(0.0, float(s.get("carbs_g", 0) or 0)), 1),
+            "fat_g": round(max(0.0, float(s.get("fat_g", 0) or 0)), 1),
             "ingredients": [str(i)[:60] for i in s.get("ingredients", [])][:10],
             "description": str(s.get("description", ""))[:280],
         })
@@ -759,18 +790,23 @@ async def suggest_meals(body: MealSuggestInput, user: dict = Depends(get_current
 
 @api.post("/meals/estimate")
 async def estimate_meal(body: MealEstimateInput, user: dict = Depends(get_current_user)):
-    """Estimate calories + guess a short name for a meal from a free-form French description."""
+    """Estimate calories + macros + guess a short name for a meal from a free-form French description."""
     system = (
         "Tu es un nutritionniste. Tu réponds STRICTEMENT en JSON valide, sans texte hors JSON, "
         "sans code fences. Toutes les valeurs textuelles sont en français."
     )
     prompt = (
         f"Description du repas: « {body.description.strip()} »\n\n"
-        "Estime les calories totales de ce repas. Sois réaliste, en tenant compte des quantités "
-        "mentionnées. Si aucune quantité n'est donnée, estime pour une portion adulte moyenne.\n\n"
+        "Estime les calories totales et les macronutriments (protéines, glucides, lipides en grammes) "
+        "de ce repas. Sois réaliste, en tenant compte des quantités mentionnées. Si aucune quantité "
+        "n'est donnée, estime pour une portion adulte moyenne. Les macronutriments doivent être "
+        "cohérents avec les calories totales (protéines et glucides ≈4 kcal/g, lipides ≈9 kcal/g).\n\n"
         'Réponds avec ce schéma JSON exact:\n'
         '{"name": "string court 3-6 mots", '
         '"calories": int, '
+        '"protein_g": number, '
+        '"carbs_g": number, '
+        '"fat_g": number, '
         '"meal_type": "petit-déjeuner|déjeuner|dîner|collation", '
         '"breakdown": "string très court expliquant l\'estimation"}'
     )
@@ -781,8 +817,73 @@ async def estimate_meal(body: MealEstimateInput, user: dict = Depends(get_curren
     return {
         "name": str(data.get("name", "Repas"))[:80],
         "calories": max(0, int(data.get("calories", 0))),
+        "protein_g": round(max(0.0, float(data.get("protein_g", 0) or 0)), 1),
+        "carbs_g": round(max(0.0, float(data.get("carbs_g", 0) or 0)), 1),
+        "fat_g": round(max(0.0, float(data.get("fat_g", 0) or 0)), 1),
         "meal_type": mt,
         "breakdown": str(data.get("breakdown", ""))[:200],
+    }
+
+
+@api.post("/meals/scan-menu")
+async def scan_menu(body: MenuScanInput, user: dict = Depends(get_current_user)):
+    """Analyze a photo of a restaurant menu and recommend the best dish for the user's goals."""
+    try:
+        image_bytes = base64.b64decode(body.image_base64)
+    except Exception:
+        raise HTTPException(400, "Image invalide")
+    if len(image_bytes) > 8_000_000:
+        raise HTTPException(400, "Image trop volumineuse (8 Mo max)")
+
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    todays_meals = await db.meals.find(
+        {"user_id": user["id"], "date": today_str}, {"_id": 0}
+    ).to_list(50)
+    consumed = sum(m.get("calories", 0) for m in todays_meals)
+    goal = int(user.get("calorie_goal", 2000))
+    remaining = max(0, goal - consumed)
+    fitness_goal = user.get("fitness_goal") or user.get("goal") or "forme générale"
+
+    system = (
+        "Tu es un nutritionniste sportif francophone. Tu analyses la photo d'un menu de restaurant "
+        "et tu recommandes UN SEUL plat, le plus adapté à l'utilisateur compte tenu de son objectif "
+        "et de son budget calorique restant pour la journée. Tu réponds STRICTEMENT en JSON valide, "
+        "sans texte hors JSON, sans code fences. Toutes les valeurs textuelles sont en français."
+    )
+    prompt = (
+        f"Objectif de l'utilisateur : {fitness_goal}.\n"
+        f"Calories restantes aujourd'hui : environ {remaining} kcal (objectif quotidien {goal} kcal).\n\n"
+        "Lis les plats visibles sur cette photo de menu. Choisis le plat le plus avantageux pour "
+        "l'utilisateur (bon équilibre nutritionnel, compatible avec son budget calorique restant, "
+        "en priorisant les protéines si l'objectif est la prise de muscle, ou un déficit raisonnable "
+        "si l'objectif est la perte de poids). Si le menu n'est pas lisible ou ne contient pas de "
+        "plats identifiables, indique-le clairement.\n\n"
+        "Réponds avec ce schéma JSON exact:\n"
+        '{"menu_lisible": true, '
+        '"plat_recommande": "string (nom exact du plat sur le menu)", '
+        '"calories": int, '
+        '"protein_g": number, '
+        '"carbs_g": number, '
+        '"fat_g": number, '
+        '"raison": "string 2-3 phrases expliquant pourquoi ce plat est le meilleur choix", '
+        '"autres_options": ["string", "string"]}\n\n'
+        "Si le menu n'est pas lisible, réponds avec le même schéma mais "
+        '"menu_lisible": false et explique le souci dans "raison" (les autres champs à 0 ou vides).'
+    )
+    data = await ask_llm_json(
+        system, prompt, f"scan-menu-{user['id']}-{uuid.uuid4()}",
+        image_bytes=image_bytes, image_mime=body.mime_type,
+    )
+    return {
+        "menu_lisible": bool(data.get("menu_lisible", True)),
+        "plat_recommande": str(data.get("plat_recommande", ""))[:120],
+        "calories": max(0, int(data.get("calories", 0) or 0)),
+        "protein_g": round(max(0.0, float(data.get("protein_g", 0) or 0)), 1),
+        "carbs_g": round(max(0.0, float(data.get("carbs_g", 0) or 0)), 1),
+        "fat_g": round(max(0.0, float(data.get("fat_g", 0) or 0)), 1),
+        "raison": str(data.get("raison", ""))[:500],
+        "autres_options": [str(o)[:100] for o in data.get("autres_options", [])][:3],
+        "remaining_calories": remaining,
     }
 
 

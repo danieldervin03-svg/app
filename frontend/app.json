@@ -28,6 +28,13 @@
     "plugins": [
       "expo-router",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Bodypilot a besoin d'accéder à vos photos pour scanner un menu.",
+          "cameraPermission": "Bodypilot a besoin d'accéder à votre caméra pour photographier un menu."
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-image.png",

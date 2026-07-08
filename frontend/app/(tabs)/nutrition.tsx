@@ -1,11 +1,12 @@
 import React, { useCallback, useState } from "react";
-import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl, ActivityIndicator, Modal, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
+import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl, ActivityIndicator, Modal, KeyboardAvoidingView, Platform, ScrollView, Image } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { colors, font, radius, spacing } from "@/src/theme";
 import { Button, Input, EmptyState } from "@/src/components/ui";
-import { api, Meal, MealSuggestion } from "@/src/api";
+import { api, Meal, MealSuggestion, MenuScanResult } from "@/src/api";
 import { useAuth } from "@/src/auth";
 
 const MEAL_TYPES: Meal["meal_type"][] = ["petit-déjeuner", "déjeuner", "dîner", "collation"];
@@ -25,6 +26,9 @@ export default function NutritionScreen() {
 
   const [mealName, setMealName] = useState("");
   const [mealCal, setMealCal] = useState("");
+  const [mealProtein, setMealProtein] = useState("");
+  const [mealCarbs, setMealCarbs] = useState("");
+  const [mealFat, setMealFat] = useState("");
   const [mealType, setMealType] = useState<Meal["meal_type"]>("petit-déjeuner");
   const [mealDesc, setMealDesc] = useState("");
   const [estimating, setEstimating] = useState(false);
@@ -36,6 +40,12 @@ export default function NutritionScreen() {
   const [suggestPref, setSuggestPref] = useState("");
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<MealSuggestion[]>([]);
+
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scanImageUri, setScanImageUri] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<MenuScanResult | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -71,6 +81,9 @@ export default function NutritionScreen() {
       const res = await api.estimateMeal(mealDesc.trim());
       setMealName(res.name);
       setMealCal(String(res.calories));
+      setMealProtein(String(res.protein_g ?? ""));
+      setMealCarbs(String(res.carbs_g ?? ""));
+      setMealFat(String(res.fat_g ?? ""));
       setMealType(res.meal_type);
       setBreakdown(res.breakdown);
     } catch (e: any) {
@@ -107,8 +120,16 @@ export default function NutritionScreen() {
     }
     setSaving(true);
     try {
-      await api.createMeal({ name, calories, meal_type: mealType });
+      await api.createMeal({
+        name,
+        calories,
+        protein_g: mealProtein.trim() ? parseFloat(mealProtein.replace(",", ".")) : undefined,
+        carbs_g: mealCarbs.trim() ? parseFloat(mealCarbs.replace(",", ".")) : undefined,
+        fat_g: mealFat.trim() ? parseFloat(mealFat.replace(",", ".")) : undefined,
+        meal_type: mealType,
+      });
       setMealName(""); setMealCal(""); setMealDesc(""); setBreakdown(null);
+      setMealProtein(""); setMealCarbs(""); setMealFat("");
       setMealType("petit-déjeuner");
       setAddOpen(false);
       await load();
@@ -143,8 +164,76 @@ export default function NutritionScreen() {
   };
 
   const addSuggested = async (s: MealSuggestion) => {
-    await api.createMeal({ name: s.name, calories: s.calories, meal_type: suggestType });
+    await api.createMeal({
+      name: s.name,
+      calories: s.calories,
+      protein_g: s.protein_g,
+      carbs_g: s.carbs_g,
+      fat_g: s.fat_g,
+      meal_type: suggestType,
+    });
     await load();
+  };
+
+  const pickMenuImage = async (source: "camera" | "library") => {
+    setScanError(null);
+    let result: ImagePicker.ImagePickerResult;
+    if (source === "camera") {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) {
+        setScanError("Autorisation caméra refusée");
+        return;
+      }
+      result = await ImagePicker.launchCameraAsync({ quality: 0.7, base64: true });
+    } else {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        setScanError("Autorisation galerie refusée");
+        return;
+      }
+      result = await ImagePicker.launchImageLibraryAsync({ quality: 0.7, base64: true });
+    }
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    setScanImageUri(asset.uri);
+    setScanResult(null);
+    if (!asset.base64) {
+      setScanError("Impossible de lire l'image");
+      return;
+    }
+    setScanning(true);
+    try {
+      const mime = asset.mimeType || "image/jpeg";
+      const res = await api.scanMenu(asset.base64, mime);
+      setScanResult(res);
+    } catch (e: any) {
+      setScanError(e.message ?? "Analyse impossible");
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const saveScannedMeal = async () => {
+    if (!scanResult) return;
+    setSaving(true);
+    try {
+      await api.createMeal({
+        name: scanResult.plat_recommande || "Repas au restaurant",
+        calories: scanResult.calories,
+        protein_g: scanResult.protein_g,
+        carbs_g: scanResult.carbs_g,
+        fat_g: scanResult.fat_g,
+        meal_type: suggestType,
+      });
+      setScanOpen(false);
+      setScanResult(null);
+      setScanImageUri(null);
+      await load();
+    } catch (e: any) {
+      setScanError(e.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -190,6 +279,14 @@ export default function NutritionScreen() {
                 <Text style={styles.actionTxtAlt}>Idées IA</Text>
               </Pressable>
             </View>
+            <Pressable
+              style={styles.scanMenuBtn}
+              onPress={() => { setScanOpen(true); setScanResult(null); setScanImageUri(null); setScanError(null); }}
+              testID="nutrition-scan-menu"
+            >
+              <Ionicons name="camera-outline" size={18} color={colors.brandPrimary} />
+              <Text style={styles.actionTxtAlt}>Scanner un menu</Text>
+            </Pressable>
 
             <Text style={styles.sectionH}>Repas du jour</Text>
           </View>
@@ -203,6 +300,11 @@ export default function NutritionScreen() {
             <View style={{ flex: 1 }}>
               <Text style={styles.mealName}>{item.name}</Text>
               <Text style={styles.mealSub}>{item.meal_type} · {item.calories} kcal</Text>
+              {item.protein_g != null || item.carbs_g != null || item.fat_g != null ? (
+                <Text style={styles.mealMacros}>
+                  P {item.protein_g ?? 0}g · G {item.carbs_g ?? 0}g · L {item.fat_g ?? 0}g
+                </Text>
+              ) : null}
             </View>
             <Pressable onPress={() => deleteMeal(item.id)} style={styles.deleteBtn} testID={`meal-delete-${item.id}`}>
               <Ionicons name="trash-outline" size={18} color={colors.error} />
@@ -257,6 +359,17 @@ export default function NutritionScreen() {
 
               <Input label="Nom" placeholder="Ex : Poulet et riz" value={mealName} onChangeText={setMealName} testID="meal-name-input" />
               <Input label="Calories" placeholder="450" keyboardType="numeric" value={mealCal} onChangeText={setMealCal} testID="meal-cal-input" />
+              <View style={{ flexDirection: "row", gap: spacing.sm }}>
+                <View style={{ flex: 1 }}>
+                  <Input label="Protéines (g)" placeholder="30" keyboardType="decimal-pad" value={mealProtein} onChangeText={setMealProtein} testID="meal-protein-input" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Input label="Glucides (g)" placeholder="50" keyboardType="decimal-pad" value={mealCarbs} onChangeText={setMealCarbs} testID="meal-carbs-input" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Input label="Lipides (g)" placeholder="15" keyboardType="decimal-pad" value={mealFat} onChangeText={setMealFat} testID="meal-fat-input" />
+                </View>
+              </View>
               <Text style={styles.subLabel}>Type</Text>
               <View style={styles.chipsRow}>
                 {MEAL_TYPES.map((t) => (
@@ -309,7 +422,10 @@ export default function NutritionScreen() {
                 {suggestions.map((s, i) => (
                   <View key={i} style={styles.sugCard} testID={`meal-suggestion-${i}`}>
                     <Text style={styles.sugName}>{s.name}</Text>
-                    <Text style={styles.sugCal}>{s.calories} kcal</Text>
+                    <Text style={styles.sugCal}>
+                      {s.calories} kcal
+                      {s.protein_g != null ? ` · P ${s.protein_g}g · G ${s.carbs_g}g · L ${s.fat_g}g` : ""}
+                    </Text>
                     <Text style={styles.sugDesc}>{s.description}</Text>
                     {s.ingredients.length > 0 ? (
                       <Text style={styles.sugIngr}>Ingrédients : {s.ingredients.join(", ")}</Text>
@@ -322,6 +438,92 @@ export default function NutritionScreen() {
                 ))}
               </ScrollView>
               <Pressable onPress={() => setSuggestOpen(false)} style={{ alignItems: "center", padding: spacing.md }}>
+                <Text style={{ color: colors.onSurfaceSecondary }}>Fermer</Text>
+              </Pressable>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
+      {/* Menu Scan Modal */}
+      <Modal visible={scanOpen} transparent animationType="slide" onRequestClose={() => setScanOpen(false)}>
+        <View style={styles.modalBg}>
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ width: "100%" }}>
+            <View style={[styles.modalCard, { maxHeight: "88%" }]}>
+              <View style={styles.dragHandle} />
+              <Text style={styles.modalTitle}>Scanner un menu</Text>
+              <Text style={styles.modalSub}>
+                Prenez en photo un menu de restaurant, l'IA vous recommande le plat le plus adapté à votre objectif.
+              </Text>
+
+              {!scanImageUri ? (
+                <View style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.md }}>
+                  <Pressable style={[styles.actionBtn, { flex: 1 }]} onPress={() => pickMenuImage("camera")} testID="scan-menu-camera">
+                    <Ionicons name="camera" size={18} color={colors.onBrandPrimary} />
+                    <Text style={styles.actionTxt}>Prendre une photo</Text>
+                  </Pressable>
+                  <Pressable style={[styles.actionBtnAlt, { flex: 1 }]} onPress={() => pickMenuImage("library")} testID="scan-menu-library">
+                    <Ionicons name="image-outline" size={18} color={colors.brandPrimary} />
+                    <Text style={styles.actionTxtAlt}>Galerie</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <Image source={{ uri: scanImageUri }} style={styles.scanPreview} resizeMode="cover" />
+              )}
+
+              {scanning ? (
+                <View style={{ alignItems: "center", padding: spacing.lg }}>
+                  <ActivityIndicator color={colors.brandPrimary} />
+                  <Text style={{ color: colors.onSurfaceSecondary, marginTop: spacing.sm }}>Analyse du menu…</Text>
+                </View>
+              ) : null}
+
+              {scanError ? <Text style={styles.err}>{scanError}</Text> : null}
+
+              {scanResult ? (
+                scanResult.menu_lisible ? (
+                  <ScrollView style={{ marginTop: spacing.sm }}>
+                    <View style={styles.sugCard}>
+                      <Text style={styles.sugName}>{scanResult.plat_recommande}</Text>
+                      <Text style={styles.sugCal}>
+                        {scanResult.calories} kcal · P {scanResult.protein_g}g · G {scanResult.carbs_g}g · L {scanResult.fat_g}g
+                      </Text>
+                      <Text style={styles.sugDesc}>{scanResult.raison}</Text>
+                      {scanResult.autres_options.length > 0 ? (
+                        <Text style={styles.sugIngr}>Autres options : {scanResult.autres_options.join(", ")}</Text>
+                      ) : null}
+                    </View>
+                    <Text style={{ fontSize: font.sm, color: colors.onSurfaceSecondary, marginBottom: spacing.sm }}>
+                      Il vous reste {scanResult.remaining_calories} kcal aujourd'hui.
+                    </Text>
+                    <Text style={styles.subLabel}>Type de repas</Text>
+                    <View style={styles.chipsRow}>
+                      {MEAL_TYPES.map((t) => (
+                        <Pressable
+                          key={t}
+                          onPress={() => setSuggestType(t)}
+                          style={[styles.chip, suggestType === t && styles.chipActive]}
+                        >
+                          <Text style={[styles.chipTxt, suggestType === t && styles.chipTxtActive]}>{t}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                    <Button title="Enregistrer ce repas" onPress={saveScannedMeal} loading={saving} testID="scan-menu-save" />
+                  </ScrollView>
+                ) : (
+                  <Text style={styles.err}>{scanResult.raison || "Menu illisible, réessayez avec une photo plus nette."}</Text>
+                )
+              ) : null}
+
+              {scanImageUri ? (
+                <Pressable
+                  onPress={() => { setScanImageUri(null); setScanResult(null); setScanError(null); }}
+                  style={{ alignItems: "center", padding: spacing.md }}
+                >
+                  <Text style={{ color: colors.onSurfaceSecondary }}>Reprendre une photo</Text>
+                </Pressable>
+              ) : null}
+              <Pressable onPress={() => setScanOpen(false)} style={{ alignItems: "center", padding: spacing.sm }}>
                 <Text style={{ color: colors.onSurfaceSecondary }}>Fermer</Text>
               </Pressable>
             </View>
@@ -367,6 +569,12 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.brandPrimary,
   },
   actionTxtAlt: { color: colors.brandPrimary, fontSize: font.base },
+  scanMenuBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm,
+    backgroundColor: colors.surface, padding: spacing.md, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.brandPrimary, marginTop: spacing.sm,
+  },
+  scanPreview: { width: "100%", height: 200, borderRadius: radius.md, marginBottom: spacing.md, backgroundColor: colors.surfaceSecondary },
   sectionH: { fontSize: font.lg, color: colors.onSurface, marginTop: spacing.xl, marginBottom: spacing.md },
   mealRow: {
     flexDirection: "row", alignItems: "center", gap: spacing.md,
@@ -378,6 +586,7 @@ const styles = StyleSheet.create({
   },
   mealName: { fontSize: font.lg, color: colors.onSurface },
   mealSub: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginTop: 2, textTransform: "capitalize" },
+  mealMacros: { fontSize: font.sm, color: colors.onSurfaceTertiary, marginTop: 2 },
   deleteBtn: { padding: spacing.sm },
 
   modalBg: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-end" },

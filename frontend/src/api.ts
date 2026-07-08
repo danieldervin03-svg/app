@@ -130,6 +130,9 @@ export type Meal = {
   user_id: string;
   name: string;
   calories: number;
+  protein_g?: number | null;
+  carbs_g?: number | null;
+  fat_g?: number | null;
   meal_type: "petit-déjeuner" | "déjeuner" | "dîner" | "collation";
   date: string;
   created_at: string;
@@ -166,8 +169,23 @@ export type TodaySummary = {
 export type MealSuggestion = {
   name: string;
   calories: number;
+  protein_g?: number;
+  carbs_g?: number;
+  fat_g?: number;
   ingredients: string[];
   description: string;
+};
+
+export type MenuScanResult = {
+  menu_lisible: boolean;
+  plat_recommande: string;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  raison: string;
+  autres_options: string[];
+  remaining_calories: number;
 };
 
 export type HistoryStats = {
@@ -239,8 +257,15 @@ export const api = {
   // Meals
   listMeals: (date?: string) =>
     request<Meal[]>(`/meals${date ? `?date=${date}` : ""}`),
-  createMeal: (body: { name: string; calories: number; meal_type: Meal["meal_type"]; date?: string }) =>
-    request<Meal>("/meals", { method: "POST", body }),
+  createMeal: (body: {
+    name: string;
+    calories: number;
+    protein_g?: number;
+    carbs_g?: number;
+    fat_g?: number;
+    meal_type: Meal["meal_type"];
+    date?: string;
+  }) => request<Meal>("/meals", { method: "POST", body }),
   deleteMeal: (id: string) => request<{ ok: boolean }>(`/meals/${id}`, { method: "DELETE" }),
   suggestMeals: (body: {
     remaining_calories: number;
@@ -248,10 +273,17 @@ export const api = {
     preferences?: string;
   }) => request<{ suggestions: MealSuggestion[] }>("/meals/suggest", { method: "POST", body }),
   estimateMeal: (description: string) =>
-    request<{ name: string; calories: number; meal_type: Meal["meal_type"]; breakdown: string }>(
-      "/meals/estimate",
-      { method: "POST", body: { description } },
-    ),
+    request<{
+      name: string;
+      calories: number;
+      protein_g: number;
+      carbs_g: number;
+      fat_g: number;
+      meal_type: Meal["meal_type"];
+      breakdown: string;
+    }>("/meals/estimate", { method: "POST", body: { description } }),
+  scanMenu: (image_base64: string, mime_type: string) =>
+    request<MenuScanResult>("/meals/scan-menu", { method: "POST", body: { image_base64, mime_type } }),
 
   // Measurements
   listMeasurements: () => request<Measurement[]>("/measurements"),
