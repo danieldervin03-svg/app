@@ -1252,7 +1252,11 @@ async def coach_chat(body: CoachChatInput, user: dict = Depends(get_current_user
         "Tu es Coach IA, un entraîneur sportif francophone bienveillant et concis. "
         "Tu conseilles l'utilisateur sur son programme, la forme des exercices, la récupération, "
         "les substitutions possibles et la progression. Tu réponds en français, en 3 à 6 phrases maximum, "
-        "sans utiliser de listes à puces sauf si l'utilisateur le demande, et sans markdown."
+        "sans utiliser de listes à puces sauf si l'utilisateur le demande, et sans markdown. "
+        "Tu ne crées ni n'enregistres jamais de programme toi-même dans cette conversation : "
+        "si l'utilisateur te demande de lui préparer, créer ou générer un programme d'entraînement, "
+        "explique-lui simplement d'utiliser le bouton « Générer un programme IA » sur l'écran Entraînements, "
+        "et propose-lui de discuter de ses objectifs pour l'aider à bien le remplir."
         f"\n\nContexte :\n{context}"
     )
 
@@ -1269,7 +1273,22 @@ async def coach_chat(body: CoachChatInput, user: dict = Depends(get_current_user
             contents=prompt,
             config=genai_types.GenerateContentConfig(system_instruction=system),
         )
-        reply_text = (response.text or "").strip()
+        block_reason = getattr(getattr(response, "prompt_feedback", None), "block_reason", None)
+        if block_reason:
+            logger.warning("Coach chat blocked by Gemini safety filters: %s", block_reason)
+            raise HTTPException(422, "Cette demande n'a pas pu être traitée, essaie de la reformuler.")
+        candidates = getattr(response, "candidates", None) or []
+        if not candidates:
+            logger.error("Coach chat: no candidates in Gemini response")
+            raise HTTPException(502, "Le coach IA est momentanément indisponible")
+        finish_reason = getattr(candidates[0], "finish_reason", None)
+        parts = getattr(getattr(candidates[0], "content", None), "parts", None) or []
+        reply_text = "".join(getattr(p, "text", "") or "" for p in parts).strip()
+        if not reply_text:
+            logger.error("Coach chat: empty reply (finish_reason=%s)", finish_reason)
+            raise HTTPException(422, "Cette demande n'a pas pu être traitée, essaie de la reformuler.")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error("Coach chat error: %s", e)
         raise HTTPException(502, "Le coach IA est momentanément indisponible")
