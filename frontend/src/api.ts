@@ -161,6 +161,15 @@ export type TodaySummary = {
   calorie_goal: number;
   calories_consumed: number;
   calories_remaining: number;
+  protein_goal_g: number;
+  protein_consumed_g: number;
+  protein_remaining_g: number;
+  carbs_goal_g: number;
+  carbs_consumed_g: number;
+  carbs_remaining_g: number;
+  fat_goal_g: number;
+  fat_consumed_g: number;
+  fat_remaining_g: number;
   meals_today: number;
   next_workout: Workout | null;
   workouts_done_this_week: number;

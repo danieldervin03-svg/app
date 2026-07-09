@@ -65,14 +65,40 @@ export default function HomeScreen() {
           </Pressable>
         ) : null}
 
-        <Card style={styles.calorieCard}>
+        <LinearGradient
+          colors={[colors.brandPrimary, colors.brand]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.calorieCard}
+        >
           <Text style={styles.cardLabel}>Calories restantes</Text>
           <Text style={styles.calorieBig} testID="home-calories-remaining">{remaining}</Text>
           <Text style={styles.calorieSub}>sur {goal} kcal · {consumed} consommées</Text>
           <View style={styles.progressBar}>
             <View style={[styles.progressFill, { width: `${percent * 100}%` }]} />
           </View>
-        </Card>
+
+          <View style={styles.macroRow}>
+            {[
+              { key: "protein", label: "Protéines", remaining: summary?.protein_remaining_g, goal: summary?.protein_goal_g },
+              { key: "carbs", label: "Glucides", remaining: summary?.carbs_remaining_g, goal: summary?.carbs_goal_g },
+              { key: "fat", label: "Lipides", remaining: summary?.fat_remaining_g, goal: summary?.fat_goal_g },
+            ].map((m) => {
+              const g = m.goal ?? 0;
+              const r = m.remaining ?? g;
+              const pct = g > 0 ? Math.min(1, Math.max(0, (g - r) / g)) : 0;
+              return (
+                <View key={m.key} style={styles.macroItem}>
+                  <Text style={styles.macroValue}>{Math.max(0, Math.round(r))}g</Text>
+                  <Text style={styles.macroLabel}>{m.label}</Text>
+                  <View style={styles.macroBarTrack}>
+                    <View style={[styles.macroBarFill, { width: `${pct * 100}%` }]} />
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </LinearGradient>
 
         <Pressable
           onPress={() => (summary?.next_workout ? router.push(`/workout/${summary.next_workout.id}` as any) : router.push("/(tabs)/workouts"))}
@@ -104,16 +130,16 @@ export default function HomeScreen() {
 
         <View style={styles.row}>
           <Card style={styles.statCard}>
-            <View style={styles.iconWrap}>
-              <Ionicons name="flame-outline" size={20} color={colors.onBrandTertiary} />
-            </View>
+            <LinearGradient colors={[colors.brand, colors.brandPrimary]} style={styles.iconWrap}>
+              <Ionicons name="flame-outline" size={20} color={colors.onBrandPrimary} />
+            </LinearGradient>
             <Text style={styles.statValue}>{summary?.meals_today ?? 0}</Text>
             <Text style={styles.statLabel}>{"Repas aujourd'hui"}</Text>
           </Card>
           <Card style={styles.statCard}>
-            <View style={styles.iconWrap}>
-              <Ionicons name="barbell-outline" size={20} color={colors.onBrandTertiary} />
-            </View>
+            <LinearGradient colors={[colors.brand, colors.brandPrimary]} style={styles.iconWrap}>
+              <Ionicons name="barbell-outline" size={20} color={colors.onBrandPrimary} />
+            </LinearGradient>
             <Text style={styles.statValue}>{summary?.workouts_done_this_week ?? 0}</Text>
             <Text style={styles.statLabel}>Séances / semaine</Text>
           </Card>
@@ -153,7 +179,7 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.surface },
+  container: { flex: 1, backgroundColor: colors.surfaceSecondary },
   scroll: { padding: spacing.lg, paddingBottom: spacing.xxxl },
   date: { fontSize: font.sm, color: colors.onSurfaceSecondary, textTransform: "capitalize" },
   hello: { fontSize: font.xxl, color: colors.onSurface, marginTop: spacing.xs, marginBottom: spacing.lg },
@@ -164,12 +190,18 @@ const styles = StyleSheet.create({
   },
   bannerTitle: { fontSize: font.base, color: colors.onBrandTertiary, fontWeight: "500" },
   bannerSub: { fontSize: font.sm, color: colors.onBrandTertiary, marginTop: 2 },
-  calorieCard: { alignItems: "flex-start" },
-  cardLabel: { fontSize: font.sm, color: colors.onSurfaceSecondary },
-  calorieBig: { fontSize: 48, color: colors.brandPrimary, fontWeight: "500", marginTop: spacing.xs },
-  calorieSub: { fontSize: font.base, color: colors.onSurfaceSecondary, marginBottom: spacing.md },
-  progressBar: { height: 8, backgroundColor: colors.brandTertiary, borderRadius: radius.pill, width: "100%", overflow: "hidden" },
-  progressFill: { height: "100%", backgroundColor: colors.brandPrimary },
+  calorieCard: { alignItems: "flex-start", borderRadius: radius.lg, padding: spacing.lg },
+  cardLabel: { fontSize: font.sm, color: "rgba(255,255,255,0.85)" },
+  calorieBig: { fontSize: 48, color: colors.onBrandPrimary, fontWeight: "600", marginTop: spacing.xs },
+  calorieSub: { fontSize: font.base, color: "rgba(255,255,255,0.85)", marginBottom: spacing.md },
+  progressBar: { height: 8, backgroundColor: "rgba(255,255,255,0.3)", borderRadius: radius.pill, width: "100%", overflow: "hidden" },
+  progressFill: { height: "100%", backgroundColor: colors.onBrandPrimary },
+  macroRow: { flexDirection: "row", width: "100%", gap: spacing.md, marginTop: spacing.lg },
+  macroItem: { flex: 1 },
+  macroValue: { fontSize: font.lg, color: colors.onBrandPrimary, fontWeight: "600" },
+  macroLabel: { fontSize: font.sm, color: "rgba(255,255,255,0.85)", marginBottom: 6 },
+  macroBarTrack: { height: 5, backgroundColor: "rgba(255,255,255,0.3)", borderRadius: radius.pill, overflow: "hidden" },
+  macroBarFill: { height: "100%", backgroundColor: colors.onBrandPrimary },
   workoutCard: {
     height: 160,
     borderRadius: radius.lg,

@@ -1186,7 +1186,14 @@ async def summary_today(user: dict = Depends(get_current_user)):
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     meals = await db.meals.find({"user_id": user["id"], "date": today}, {"_id": 0}).to_list(200)
     consumed = sum(int(m.get("calories", 0)) for m in meals)
+    protein_consumed = sum(float(m.get("protein_g") or 0) for m in meals)
+    carbs_consumed = sum(float(m.get("carbs_g") or 0) for m in meals)
+    fat_consumed = sum(float(m.get("fat_g") or 0) for m in meals)
     goal = int(user.get("calorie_goal", 2000))
+    # Default macro split (protein 30% / carbs 40% / fat 30% of calorie goal)
+    protein_goal = round((goal * 0.30) / 4)
+    carbs_goal = round((goal * 0.40) / 4)
+    fat_goal = round((goal * 0.30) / 9)
     # next workout = latest not performed
     next_wk_doc = await db.workouts.find_one(
         {"user_id": user["id"], "performed_at": None},
@@ -1203,6 +1210,15 @@ async def summary_today(user: dict = Depends(get_current_user)):
         "calorie_goal": goal,
         "calories_consumed": consumed,
         "calories_remaining": goal - consumed,
+        "protein_goal_g": protein_goal,
+        "protein_consumed_g": round(protein_consumed, 1),
+        "protein_remaining_g": round(protein_goal - protein_consumed, 1),
+        "carbs_goal_g": carbs_goal,
+        "carbs_consumed_g": round(carbs_consumed, 1),
+        "carbs_remaining_g": round(carbs_goal - carbs_consumed, 1),
+        "fat_goal_g": fat_goal,
+        "fat_consumed_g": round(fat_consumed, 1),
+        "fat_remaining_g": round(fat_goal - fat_consumed, 1),
         "meals_today": len(meals),
         "next_workout": Workout(**next_wk_doc).model_dump() if next_wk_doc else None,
         "workouts_done_this_week": done_this_week,
