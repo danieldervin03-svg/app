@@ -66,7 +66,7 @@ export default function HomeScreen() {
         ) : null}
 
         <LinearGradient
-          colors={[colors.brandPrimary, colors.brand]}
+          colors={[colors.onBrandSecondary, colors.brand, colors.brandSecondary]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.calorieCard}
@@ -80,19 +80,24 @@ export default function HomeScreen() {
 
           <View style={styles.macroRow}>
             {[
-              { key: "protein", label: "Protéines", remaining: summary?.protein_remaining_g, goal: summary?.protein_goal_g },
-              { key: "carbs", label: "Glucides", remaining: summary?.carbs_remaining_g, goal: summary?.carbs_goal_g },
-              { key: "fat", label: "Lipides", remaining: summary?.fat_remaining_g, goal: summary?.fat_goal_g },
+              { key: "protein", label: "Protéines", icon: "flash" as const, color: "#FB7185", remaining: summary?.protein_remaining_g, goal: summary?.protein_goal_g },
+              { key: "carbs", label: "Glucides", icon: "leaf" as const, color: "#FBBF24", remaining: summary?.carbs_remaining_g, goal: summary?.carbs_goal_g },
+              { key: "fat", label: "Lipides", icon: "water" as const, color: "#60A5FA", remaining: summary?.fat_remaining_g, goal: summary?.fat_goal_g },
             ].map((m) => {
               const g = m.goal ?? 0;
               const r = m.remaining ?? g;
               const pct = g > 0 ? Math.min(1, Math.max(0, (g - r) / g)) : 0;
               return (
                 <View key={m.key} style={styles.macroItem}>
-                  <Text style={styles.macroValue}>{Math.max(0, Math.round(r))}g</Text>
+                  <View style={styles.macroHeader}>
+                    <View style={[styles.macroIconDot, { backgroundColor: m.color }]}>
+                      <Ionicons name={m.icon} size={11} color="#FFF" />
+                    </View>
+                    <Text style={styles.macroValue}>{Math.max(0, Math.round(r))}g</Text>
+                  </View>
                   <Text style={styles.macroLabel}>{m.label}</Text>
                   <View style={styles.macroBarTrack}>
-                    <View style={[styles.macroBarFill, { width: `${pct * 100}%` }]} />
+                    <View style={[styles.macroBarFill, { width: `${pct * 100}%`, backgroundColor: m.color }]} />
                   </View>
                 </View>
               );
@@ -198,10 +203,12 @@ const styles = StyleSheet.create({
   progressFill: { height: "100%", backgroundColor: colors.onBrandPrimary },
   macroRow: { flexDirection: "row", width: "100%", gap: spacing.md, marginTop: spacing.lg },
   macroItem: { flex: 1 },
+  macroHeader: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 2 },
+  macroIconDot: { width: 18, height: 18, borderRadius: 9, alignItems: "center", justifyContent: "center" },
   macroValue: { fontSize: font.lg, color: colors.onBrandPrimary, fontWeight: "600" },
   macroLabel: { fontSize: font.sm, color: "rgba(255,255,255,0.85)", marginBottom: 6 },
   macroBarTrack: { height: 5, backgroundColor: "rgba(255,255,255,0.3)", borderRadius: radius.pill, overflow: "hidden" },
-  macroBarFill: { height: "100%", backgroundColor: colors.onBrandPrimary },
+  macroBarFill: { height: "100%", borderRadius: radius.pill },
   workoutCard: {
     height: 160,
     borderRadius: radius.lg,
