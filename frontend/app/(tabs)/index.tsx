@@ -42,6 +42,7 @@ export default function HomeScreen() {
   const today = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
 
   return (
+    <LinearGradient colors={[colors.brandTertiary, colors.surface]} style={{ flex: 1 }}>
     <SafeAreaView style={styles.container} testID="home-screen">
       <ScrollView
         contentContainerStyle={styles.scroll}
@@ -180,11 +181,12 @@ export default function HomeScreen() {
 
       <CoachChat visible={coachOpen} onClose={() => setCoachOpen(false)} />
     </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.brandTertiary },
+  container: { flex: 1, backgroundColor: "transparent" },
   scroll: { padding: spacing.lg, paddingBottom: spacing.xxxl },
   date: { fontSize: font.sm, color: colors.onSurfaceSecondary, textTransform: "capitalize" },
   hello: { fontSize: font.xxl, color: colors.onSurface, marginTop: spacing.xs, marginBottom: spacing.lg },

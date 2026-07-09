@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl, ActivityIn
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import * as ImagePicker from "expo-image-picker";
 import { colors, font, radius, spacing } from "@/src/theme";
 import { Button, Input, EmptyState } from "@/src/components/ui";
@@ -237,6 +238,7 @@ export default function NutritionScreen() {
   };
 
   return (
+    <LinearGradient colors={[colors.brandTertiary, colors.surface]} style={{ flex: 1 }}>
     <SafeAreaView style={styles.container} testID="nutrition-screen">
       <View style={styles.header}>
         <Text style={styles.title}>Nutrition</Text>
@@ -531,11 +533,12 @@ export default function NutritionScreen() {
         </View>
       </Modal>
     </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.brandTertiary },
+  container: { flex: 1, backgroundColor: "transparent" },
   header: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
   title: { fontSize: font.xxl, color: colors.onSurface, fontWeight: "500" },
   list: { padding: spacing.lg, paddingBottom: 120 },

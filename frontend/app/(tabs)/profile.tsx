@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Modal, Pressable, KeyboardAvoidingView, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { colors, font, radius, spacing } from "@/src/theme";
 import { Button, Input } from "@/src/components/ui";
@@ -107,6 +108,7 @@ export default function ProfileScreen() {
   );
 
   return (
+    <LinearGradient colors={[colors.brandTertiary, colors.surface]} style={{ flex: 1 }}>
     <SafeAreaView style={styles.container} testID="profile-screen">
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.header}>
@@ -283,11 +285,12 @@ export default function ProfileScreen() {
         </View>
       </Modal>
     </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.brandTertiary },
+  container: { flex: 1, backgroundColor: "transparent" },
   scroll: { padding: spacing.lg, paddingBottom: 120 },
   header: { alignItems: "center", padding: spacing.xl },
   avatar: {

@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl, ActivityIn
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { colors, font, radius, spacing } from "@/src/theme";
 import { EmptyState } from "@/src/components/ui";
 import { api, Workout } from "@/src/api";
@@ -41,6 +42,7 @@ export default function WorkoutsScreen() {
   };
 
   return (
+    <LinearGradient colors={[colors.brandTertiary, colors.surface]} style={{ flex: 1 }}>
     <SafeAreaView style={styles.container} testID="workouts-screen">
       <View style={styles.header}>
         <Text style={styles.title}>Entraînements</Text>
@@ -123,11 +125,12 @@ export default function WorkoutsScreen() {
         <Text style={styles.fabTxt}>{"Demander à l'IA"}</Text>
       </Pressable>
     </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.brandTertiary },
+  container: { flex: 1, backgroundColor: "transparent" },
   tip: {
     flexDirection: "row", alignItems: "flex-start", gap: spacing.sm,
     marginHorizontal: spacing.lg, marginBottom: spacing.md,

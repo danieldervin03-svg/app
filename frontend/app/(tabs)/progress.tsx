@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Pressable, RefreshControl } from "r
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { colors, font, radius, spacing } from "@/src/theme";
 import { EmptyState } from "@/src/components/ui";
 import { api, CalorieRecommendation, HistoryStats, Measurement } from "@/src/api";
@@ -87,6 +88,7 @@ export default function ProgressScreen() {
   const sorted = [...items].reverse();
 
   return (
+    <LinearGradient colors={[colors.brandTertiary, colors.surface]} style={{ flex: 1 }}>
     <SafeAreaView style={styles.container} testID="progress-screen">
       <View style={styles.header}>
         <Text style={styles.title}>Progrès</Text>
@@ -249,11 +251,12 @@ export default function ProgressScreen() {
         )}
       </ScrollView>
     </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.brandTertiary },
+  container: { flex: 1, backgroundColor: "transparent" },
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
