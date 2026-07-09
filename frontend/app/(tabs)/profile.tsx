@@ -287,7 +287,7 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.surface },
+  container: { flex: 1, backgroundColor: colors.brandTertiary },
   scroll: { padding: spacing.lg, paddingBottom: 120 },
   header: { alignItems: "center", padding: spacing.xl },
   avatar: {
@@ -300,7 +300,8 @@ const styles = StyleSheet.create({
   section: { fontSize: font.sm, color: colors.onSurfaceSecondary, textTransform: "uppercase", letterSpacing: 1, marginTop: spacing.lg, marginBottom: spacing.sm },
   hint: {
     flexDirection: "row", alignItems: "center", gap: spacing.sm,
-    padding: spacing.md, backgroundColor: colors.brandTertiary, borderRadius: radius.md, marginBottom: spacing.sm,
+    padding: spacing.md, backgroundColor: colors.surface, borderRadius: radius.md, marginBottom: spacing.sm,
+    borderWidth: 1, borderColor: colors.brandSecondary,
   },
   hintTxt: { flex: 1, fontSize: font.sm, color: colors.onBrandTertiary },
   row: {

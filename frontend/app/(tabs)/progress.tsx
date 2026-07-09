@@ -253,7 +253,7 @@ export default function ProgressScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.surface },
+  container: { flex: 1, backgroundColor: colors.brandTertiary },
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
@@ -275,6 +275,7 @@ const styles = StyleSheet.create({
   },
   statBoxAccent: {
     flex: 1, backgroundColor: colors.brandTertiary, borderRadius: radius.md, padding: spacing.md,
+    borderWidth: 1, borderColor: colors.brandSecondary,
     alignItems: "center",
   },
   streakIcon: {

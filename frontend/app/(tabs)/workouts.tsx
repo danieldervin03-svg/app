@@ -127,11 +127,12 @@ export default function WorkoutsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.surface },
+  container: { flex: 1, backgroundColor: colors.brandTertiary },
   tip: {
     flexDirection: "row", alignItems: "flex-start", gap: spacing.sm,
     marginHorizontal: spacing.lg, marginBottom: spacing.md,
-    padding: spacing.md, backgroundColor: colors.brandTertiary, borderRadius: radius.md,
+    padding: spacing.md, backgroundColor: colors.surface, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.brandSecondary,
   },
   tipTxt: { flex: 1, fontSize: font.sm, color: colors.onSurface, lineHeight: 18 },
   header: {

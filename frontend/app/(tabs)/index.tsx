@@ -184,7 +184,7 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.surfaceSecondary },
+  container: { flex: 1, backgroundColor: colors.brandTertiary },
   scroll: { padding: spacing.lg, paddingBottom: spacing.xxxl },
   date: { fontSize: font.sm, color: colors.onSurfaceSecondary, textTransform: "capitalize" },
   hello: { fontSize: font.xxl, color: colors.onSurface, marginTop: spacing.xs, marginBottom: spacing.lg },
@@ -232,7 +232,8 @@ const styles = StyleSheet.create({
   quickActions: { marginTop: spacing.xl, gap: spacing.md },
   quickBtn: {
     flexDirection: "row", alignItems: "center", gap: spacing.md,
-    backgroundColor: colors.brandTertiary, padding: spacing.lg, borderRadius: radius.md,
+    backgroundColor: colors.surface, padding: spacing.lg, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.divider,
   },
   quickTxt: { fontSize: font.lg, color: colors.onBrandTertiary },
 });
