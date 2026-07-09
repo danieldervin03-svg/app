@@ -304,7 +304,11 @@ export default function NutritionScreen() {
               <Text style={styles.mealSub}>{item.meal_type} · {item.calories} kcal</Text>
               {item.protein_g != null || item.carbs_g != null || item.fat_g != null ? (
                 <Text style={styles.mealMacros}>
-                  P {item.protein_g ?? 0}g · G {item.carbs_g ?? 0}g · L {item.fat_g ?? 0}g
+                  <Text style={{ color: "#FB7185", fontWeight: "600" }}>P {item.protein_g ?? 0}g</Text>
+                  <Text style={{ color: colors.onSurfaceTertiary }}> · </Text>
+                  <Text style={{ color: "#FBBF24", fontWeight: "600" }}>G {item.carbs_g ?? 0}g</Text>
+                  <Text style={{ color: colors.onSurfaceTertiary }}> · </Text>
+                  <Text style={{ color: "#60A5FA", fontWeight: "600" }}>L {item.fat_g ?? 0}g</Text>
                 </Text>
               ) : null}
             </View>
@@ -426,7 +430,16 @@ export default function NutritionScreen() {
                     <Text style={styles.sugName}>{s.name}</Text>
                     <Text style={styles.sugCal}>
                       {s.calories} kcal
-                      {s.protein_g != null ? ` · P ${s.protein_g}g · G ${s.carbs_g}g · L ${s.fat_g}g` : ""}
+                      {s.protein_g != null ? (
+                        <>
+                          <Text style={{ color: colors.onSurfaceSecondary }}> · </Text>
+                          <Text style={{ color: "#FB7185", fontWeight: "600" }}>P {s.protein_g}g</Text>
+                          <Text style={{ color: colors.onSurfaceSecondary }}> · </Text>
+                          <Text style={{ color: "#FBBF24", fontWeight: "600" }}>G {s.carbs_g}g</Text>
+                          <Text style={{ color: colors.onSurfaceSecondary }}> · </Text>
+                          <Text style={{ color: "#60A5FA", fontWeight: "600" }}>L {s.fat_g}g</Text>
+                        </>
+                      ) : null}
                     </Text>
                     <Text style={styles.sugDesc}>{s.description}</Text>
                     {s.ingredients.length > 0 ? (
@@ -488,7 +501,13 @@ export default function NutritionScreen() {
                     <View style={styles.sugCard}>
                       <Text style={styles.sugName}>{scanResult.plat_recommande}</Text>
                       <Text style={styles.sugCal}>
-                        {scanResult.calories} kcal · P {scanResult.protein_g}g · G {scanResult.carbs_g}g · L {scanResult.fat_g}g
+                        {scanResult.calories} kcal
+                        <Text style={{ color: colors.onSurfaceSecondary }}> · </Text>
+                        <Text style={{ color: "#FB7185", fontWeight: "600" }}>P {scanResult.protein_g}g</Text>
+                        <Text style={{ color: colors.onSurfaceSecondary }}> · </Text>
+                        <Text style={{ color: "#FBBF24", fontWeight: "600" }}>G {scanResult.carbs_g}g</Text>
+                        <Text style={{ color: colors.onSurfaceSecondary }}> · </Text>
+                        <Text style={{ color: "#60A5FA", fontWeight: "600" }}>L {scanResult.fat_g}g</Text>
                       </Text>
                       <Text style={styles.sugDesc}>{scanResult.raison}</Text>
                       {scanResult.autres_options.length > 0 ? (
