@@ -72,6 +72,8 @@ export default function LoginScreen() {
             label="Mot de passe"
             placeholder="••••••••"
             secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
             value={password}
             onChangeText={setPassword}
             testID="login-password-input"

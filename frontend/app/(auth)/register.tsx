@@ -77,6 +77,8 @@ export default function RegisterScreen() {
             label="Mot de passe"
             placeholder="6 caractères minimum"
             secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
             value={password}
             onChangeText={setPassword}
             testID="register-password-input"
