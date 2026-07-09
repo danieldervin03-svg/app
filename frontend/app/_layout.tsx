@@ -1,14 +1,14 @@
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect, useState } from "react";
-import { LogBox, View, ActivityIndicator, StyleSheet } from "react-native";
+import { LogBox, View, ActivityIndicator, StyleSheet, Text } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider, useAuth } from "@/src/auth";
-import { colors } from "@/src/theme";
+import { colors, font, spacing } from "@/src/theme";
 import { AnimatedSplash } from "@/src/components/animated-splash";
 
 LogBox.ignoreAllLogs(true);
@@ -18,6 +18,7 @@ function RootGuard() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const segments = useSegments();
+  const [showSlowHint, setShowSlowHint] = useState(false);
 
   useEffect(() => {
     if (loading) return;
@@ -30,10 +31,25 @@ function RootGuard() {
     }
   }, [user, loading, segments, router]);
 
+  useEffect(() => {
+    if (!loading) {
+      setShowSlowHint(false);
+      return;
+    }
+    const t = setTimeout(() => setShowSlowHint(true), 4000);
+    return () => clearTimeout(t);
+  }, [loading]);
+
   if (loading) {
     return (
       <View style={styles.center} testID="root-loading">
         <ActivityIndicator color={colors.brandPrimary} size="large" />
+        {showSlowHint ? (
+          <Text style={styles.slowHint}>
+            Connexion au serveur… Bodypilot est en développement actif, ça peut prendre jusqu'à une
+            minute au premier lancement. Pas de panique ! 🙂
+          </Text>
+        ) : null}
       </View>
     );
   }
@@ -68,5 +84,6 @@ export default function RootLayout() {
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface, paddingHorizontal: spacing.xl },
+  slowHint: { marginTop: spacing.lg, fontSize: font.sm, color: colors.onSurfaceSecondary, textAlign: "center", lineHeight: 20 },
 });
