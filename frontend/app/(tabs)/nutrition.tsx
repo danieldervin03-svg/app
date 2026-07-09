@@ -62,6 +62,12 @@ export default function NutritionScreen() {
   const consumed = meals.reduce((s, m) => s + m.calories, 0);
   const remaining = Math.max(0, goal - consumed);
   const percent = Math.min(1, consumed / Math.max(1, goal));
+  const proteinConsumed = meals.reduce((s, m) => s + (m.protein_g ?? 0), 0);
+  const carbsConsumed = meals.reduce((s, m) => s + (m.carbs_g ?? 0), 0);
+  const fatConsumed = meals.reduce((s, m) => s + (m.fat_g ?? 0), 0);
+  const proteinGoal = Math.round((goal * 0.30) / 4);
+  const carbsGoal = Math.round((goal * 0.40) / 4);
+  const fatGoal = Math.round((goal * 0.30) / 9);
 
   const mealsPerDay = user?.meals_per_day ?? 4;
   const mealsRemaining = Math.max(1, mealsPerDay - meals.length);
@@ -251,7 +257,13 @@ export default function NutritionScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brandPrimary} />}
         ListHeaderComponent={
           <View>
-            <View style={styles.calorieCard}>
+            <LinearGradient
+              colors={[colors.onBrandSecondary, colors.brand, colors.brandSecondary]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.calorieCard}
+            >
+              <Ionicons name="restaurant" size={130} color="rgba(255,255,255,0.10)" style={styles.heroDecor} />
               <Text style={styles.cardLabel}>{"Calories aujourd'hui"}</Text>
               <View style={styles.rowBetween}>
                 <Text style={styles.calBig} testID="nutrition-consumed">{consumed}</Text>
@@ -263,13 +275,38 @@ export default function NutritionScreen() {
               <Text style={styles.calSub}>
                 {remaining > 0 ? `Il reste ${remaining} kcal` : `Objectif dépassé de ${consumed - goal} kcal`}
               </Text>
+
+              <View style={styles.macroRow}>
+                {[
+                  { key: "protein", label: "Protéines", icon: "flash" as const, color: "#FB7185", consumed: proteinConsumed, goal: proteinGoal },
+                  { key: "carbs", label: "Glucides", icon: "leaf" as const, color: "#FBBF24", consumed: carbsConsumed, goal: carbsGoal },
+                  { key: "fat", label: "Lipides", icon: "water" as const, color: "#60A5FA", consumed: fatConsumed, goal: fatGoal },
+                ].map((m) => {
+                  const pct = m.goal > 0 ? Math.min(1, m.consumed / m.goal) : 0;
+                  return (
+                    <View key={m.key} style={styles.macroItem}>
+                      <View style={styles.macroHeader}>
+                        <View style={[styles.macroIconDot, { backgroundColor: m.color }]}>
+                          <Ionicons name={m.icon} size={11} color="#FFF" />
+                        </View>
+                        <Text style={styles.macroValue}>{Math.round(m.consumed)}g</Text>
+                      </View>
+                      <Text style={styles.macroLabel}>{m.label}</Text>
+                      <View style={styles.macroBarTrack}>
+                        <View style={[styles.macroBarFill, { width: `${pct * 100}%`, backgroundColor: m.color }]} />
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+
               <View style={styles.perMealRow}>
-                <Ionicons name="restaurant-outline" size={14} color={colors.onBrandTertiary} />
+                <Ionicons name="restaurant-outline" size={14} color="rgba(255,255,255,0.85)" />
                 <Text style={styles.perMealTxt}>
                   {user?.meals_per_day ?? 4} repas/jour · {Math.round(goal / (user?.meals_per_day ?? 4))} kcal/repas
                 </Text>
               </View>
-            </View>
+            </LinearGradient>
 
             <View style={styles.actionsRow}>
               <Pressable style={styles.actionBtn} onPress={() => setAddOpen(true)} testID="nutrition-add-meal">
@@ -562,23 +599,32 @@ const styles = StyleSheet.create({
   title: { fontSize: font.xxl, color: colors.onSurface, fontWeight: "500" },
   list: { padding: spacing.lg, paddingBottom: 120 },
   calorieCard: {
-    backgroundColor: colors.brandTertiary,
     borderRadius: radius.lg, padding: spacing.lg,
+    overflow: "hidden", position: "relative",
   },
-  cardLabel: { fontSize: font.sm, color: colors.onBrandTertiary },
+  heroDecor: { position: "absolute", top: -16, right: -16, transform: [{ rotate: "-18deg" }] },
+  cardLabel: { fontSize: font.sm, color: "rgba(255,255,255,0.85)" },
   rowBetween: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, marginTop: spacing.xs },
-  calBig: { fontSize: 40, color: colors.onBrandTertiary, fontWeight: "500" },
-  calGoal: { fontSize: font.lg, color: colors.onBrandTertiary, marginBottom: 8 },
-  progressBar: { height: 8, backgroundColor: "rgba(6,95,70,0.15)", borderRadius: radius.pill, overflow: "hidden", marginTop: spacing.md },
-  progressFill: { height: "100%", backgroundColor: colors.brandPrimary },
-  calSub: { fontSize: font.base, color: colors.onBrandTertiary, marginTop: spacing.sm },
+  calBig: { fontSize: 40, color: colors.onBrandPrimary, fontWeight: "600" },
+  calGoal: { fontSize: font.lg, color: "rgba(255,255,255,0.85)", marginBottom: 8 },
+  progressBar: { height: 8, backgroundColor: "rgba(255,255,255,0.3)", borderRadius: radius.pill, overflow: "hidden", marginTop: spacing.md },
+  progressFill: { height: "100%", backgroundColor: colors.onBrandPrimary },
+  calSub: { fontSize: font.base, color: "rgba(255,255,255,0.85)", marginTop: spacing.sm },
+  macroRow: { flexDirection: "row", width: "100%", gap: spacing.md, marginTop: spacing.lg },
+  macroItem: { flex: 1 },
+  macroHeader: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 2 },
+  macroIconDot: { width: 18, height: 18, borderRadius: 9, alignItems: "center", justifyContent: "center" },
+  macroValue: { fontSize: font.lg, color: colors.onBrandPrimary, fontWeight: "600" },
+  macroLabel: { fontSize: font.sm, color: "rgba(255,255,255,0.85)", marginBottom: 6 },
+  macroBarTrack: { height: 5, backgroundColor: "rgba(255,255,255,0.3)", borderRadius: radius.pill, overflow: "hidden" },
+  macroBarFill: { height: "100%", borderRadius: radius.pill },
   perMealRow: {
     flexDirection: "row", alignItems: "center", gap: 6,
-    marginTop: spacing.sm,
+    marginTop: spacing.md,
     paddingTop: spacing.sm,
-    borderTopWidth: 1, borderTopColor: "rgba(55,65,81,0.15)",
+    borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.25)",
   },
-  perMealTxt: { fontSize: font.sm, color: colors.onBrandTertiary },
+  perMealTxt: { fontSize: font.sm, color: "rgba(255,255,255,0.85)" },
   actionsRow: { flexDirection: "row", gap: spacing.md, marginTop: spacing.lg },
   actionBtn: {
     flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm,
