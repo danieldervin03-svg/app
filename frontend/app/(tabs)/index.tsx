@@ -48,61 +48,65 @@ export default function HomeScreen() {
         contentContainerStyle={styles.scroll}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brandPrimary} />}
       >
-        <Text style={styles.date}>{today.charAt(0).toUpperCase() + today.slice(1)}</Text>
-        <Text style={styles.hello} testID="home-greeting">Bonjour {user?.name} 👋</Text>
-
-        {!user?.sex || !user?.age || !user?.height_cm || !user?.weight_kg ? (
-          <Pressable
-            style={styles.profileBanner}
-            onPress={() => router.push("/(tabs)/profile")}
-            testID="home-profile-banner"
-          >
-            <Ionicons name="information-circle" size={22} color={colors.brandPrimary} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.bannerTitle}>Personnalisez votre objectif calorique</Text>
-              <Text style={styles.bannerSub}>Renseignez votre profil santé (sexe, âge, taille, poids, objectif) pour un calcul précis.</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.brandPrimary} />
-          </Pressable>
-        ) : null}
-
         <LinearGradient
           colors={[colors.onBrandSecondary, colors.brand, colors.brandSecondary]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={styles.calorieCard}
+          style={styles.hero}
         >
-          <Text style={styles.cardLabel}>Calories restantes</Text>
-          <Text style={styles.calorieBig} testID="home-calories-remaining">{remaining}</Text>
-          <Text style={styles.calorieSub}>sur {goal} kcal · {consumed} consommées</Text>
-          <View style={styles.progressBar}>
-            <View style={[styles.progressFill, { width: `${percent * 100}%` }]} />
-          </View>
+          <Ionicons name="barbell" size={140} color="rgba(255,255,255,0.10)" style={styles.heroDecor} />
 
-          <View style={styles.macroRow}>
-            {[
-              { key: "protein", label: "Protéines", icon: "flash" as const, color: "#FB7185", remaining: summary?.protein_remaining_g, goal: summary?.protein_goal_g },
-              { key: "carbs", label: "Glucides", icon: "leaf" as const, color: "#FBBF24", remaining: summary?.carbs_remaining_g, goal: summary?.carbs_goal_g },
-              { key: "fat", label: "Lipides", icon: "water" as const, color: "#60A5FA", remaining: summary?.fat_remaining_g, goal: summary?.fat_goal_g },
-            ].map((m) => {
-              const g = m.goal ?? 0;
-              const r = m.remaining ?? g;
-              const pct = g > 0 ? Math.min(1, Math.max(0, (g - r) / g)) : 0;
-              return (
-                <View key={m.key} style={styles.macroItem}>
-                  <View style={styles.macroHeader}>
-                    <View style={[styles.macroIconDot, { backgroundColor: m.color }]}>
-                      <Ionicons name={m.icon} size={11} color="#FFF" />
+          <Text style={styles.date}>{today.charAt(0).toUpperCase() + today.slice(1)}</Text>
+          <Text style={styles.hello} testID="home-greeting">Bonjour {user?.name} 👋</Text>
+
+          {!user?.sex || !user?.age || !user?.height_cm || !user?.weight_kg ? (
+            <Pressable
+              style={styles.profileBanner}
+              onPress={() => router.push("/(tabs)/profile")}
+              testID="home-profile-banner"
+            >
+              <Ionicons name="information-circle" size={22} color={colors.onBrandPrimary} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.bannerTitle}>Personnalisez votre objectif calorique</Text>
+                <Text style={styles.bannerSub}>Renseignez votre profil santé (sexe, âge, taille, poids, objectif) pour un calcul précis.</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.onBrandPrimary} />
+            </Pressable>
+          ) : null}
+
+          <View style={styles.calorieCard}>
+            <Text style={styles.cardLabel}>Calories restantes</Text>
+            <Text style={styles.calorieBig} testID="home-calories-remaining">{remaining}</Text>
+            <Text style={styles.calorieSub}>sur {goal} kcal · {consumed} consommées</Text>
+            <View style={styles.progressBar}>
+              <View style={[styles.progressFill, { width: `${percent * 100}%` }]} />
+            </View>
+
+            <View style={styles.macroRow}>
+              {[
+                { key: "protein", label: "Protéines", icon: "flash" as const, color: "#FB7185", remaining: summary?.protein_remaining_g, goal: summary?.protein_goal_g },
+                { key: "carbs", label: "Glucides", icon: "leaf" as const, color: "#FBBF24", remaining: summary?.carbs_remaining_g, goal: summary?.carbs_goal_g },
+                { key: "fat", label: "Lipides", icon: "water" as const, color: "#60A5FA", remaining: summary?.fat_remaining_g, goal: summary?.fat_goal_g },
+              ].map((m) => {
+                const g = m.goal ?? 0;
+                const r = m.remaining ?? g;
+                const pct = g > 0 ? Math.min(1, Math.max(0, (g - r) / g)) : 0;
+                return (
+                  <View key={m.key} style={styles.macroItem}>
+                    <View style={styles.macroHeader}>
+                      <View style={[styles.macroIconDot, { backgroundColor: m.color }]}>
+                        <Ionicons name={m.icon} size={11} color="#FFF" />
+                      </View>
+                      <Text style={styles.macroValue}>{Math.max(0, Math.round(r))}g</Text>
                     </View>
-                    <Text style={styles.macroValue}>{Math.max(0, Math.round(r))}g</Text>
-                  </View>
-                  <Text style={styles.macroLabel}>{m.label}</Text>
-                  <View style={styles.macroBarTrack}>
+                    <Text style={styles.macroLabel}>{m.label}</Text>
+                    <View style={styles.macroBarTrack}>
                     <View style={[styles.macroBarFill, { width: `${pct * 100}%`, backgroundColor: m.color }]} />
                   </View>
                 </View>
               );
             })}
+          </View>
           </View>
         </LinearGradient>
 
@@ -188,16 +192,21 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "transparent" },
   scroll: { padding: spacing.lg, paddingBottom: spacing.xxxl },
-  date: { fontSize: font.sm, color: colors.onSurfaceSecondary, textTransform: "capitalize" },
-  hello: { fontSize: font.xxl, color: colors.onSurface, marginTop: spacing.xs, marginBottom: spacing.lg },
+  hero: {
+    borderRadius: radius.lg, padding: spacing.lg,
+    overflow: "hidden", position: "relative",
+  },
+  heroDecor: { position: "absolute", top: -20, right: -20, transform: [{ rotate: "-18deg" }] },
+  date: { fontSize: font.sm, color: "rgba(255,255,255,0.8)", textTransform: "capitalize" },
+  hello: { fontSize: font.xxl, color: colors.onBrandPrimary, fontWeight: "600", marginTop: spacing.xs, marginBottom: spacing.lg },
   profileBanner: {
     flexDirection: "row", alignItems: "center", gap: spacing.md,
     padding: spacing.md, marginBottom: spacing.md,
-    backgroundColor: colors.brandTertiary, borderRadius: radius.md,
+    backgroundColor: "rgba(255,255,255,0.16)", borderRadius: radius.md,
   },
-  bannerTitle: { fontSize: font.base, color: colors.onBrandTertiary, fontWeight: "500" },
-  bannerSub: { fontSize: font.sm, color: colors.onBrandTertiary, marginTop: 2 },
-  calorieCard: { alignItems: "flex-start", borderRadius: radius.lg, padding: spacing.lg },
+  bannerTitle: { fontSize: font.base, color: colors.onBrandPrimary, fontWeight: "500" },
+  bannerSub: { fontSize: font.sm, color: "rgba(255,255,255,0.85)", marginTop: 2 },
+  calorieCard: { alignItems: "flex-start" },
   cardLabel: { fontSize: font.sm, color: "rgba(255,255,255,0.85)" },
   calorieBig: { fontSize: 48, color: colors.onBrandPrimary, fontWeight: "600", marginTop: spacing.xs },
   calorieSub: { fontSize: font.base, color: "rgba(255,255,255,0.85)", marginBottom: spacing.md },
