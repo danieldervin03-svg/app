@@ -18,10 +18,7 @@
         "backgroundColor": "#65A30D"
       },
       "edgeToEdgeEnabled": true,
-      "package": "bodypilot.app",
-      "permissions": [
-        "android.permission.RECORD_AUDIO"
-      ]
+      "package": "bodypilot.app"
     },
     "web": {
       "bundler": "metro",
@@ -40,9 +37,10 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-image.png",
-          "resizeMode": "cover",
-          "backgroundColor": "#365314"
+          "image": "./assets/images/adaptive-icon.png",
+          "imageWidth": 180,
+          "resizeMode": "contain",
+          "backgroundColor": "#65A30D"
         }
       ]
     ],
