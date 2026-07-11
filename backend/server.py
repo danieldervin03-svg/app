@@ -81,7 +81,20 @@ class UserPublic(BaseModel):
     weight_kg: Optional[float] = None
     activity_level: Optional[Literal["sédentaire", "léger", "modéré", "actif", "très actif"]] = None
     fitness_goal: Optional[Literal["prise de masse", "sèche", "maintien"]] = None
+    protein_goal_g: Optional[float] = None
+    carbs_goal_g: Optional[float] = None
+    fat_goal_g: Optional[float] = None
+    fiber_goal_g: Optional[float] = None
     created_at: str
+
+
+class MacroGoalsUpdate(BaseModel):
+    # Send null/None for a field to reset it back to automatic calculation
+    protein_goal_g: Optional[float] = Field(default=None, ge=0, le=500)
+    carbs_goal_g: Optional[float] = Field(default=None, ge=0, le=900)
+    fat_goal_g: Optional[float] = Field(default=None, ge=0, le=400)
+    fiber_goal_g: Optional[float] = Field(default=None, ge=0, le=150)
+    use_auto: bool = False  # if true, clears all custom macro goals regardless of the fields above
 
 
 class MealsPerDayUpdate(BaseModel):
@@ -121,6 +134,44 @@ def compute_calorie_goal(sex: str, age: int, height_cm: float, weight_kg: float,
     tdee = bmr * ACTIVITY_FACTORS.get(activity_level, 1.375)
     total = tdee + GOAL_ADJUSTMENTS.get(goal, 0)
     return max(1000, int(round(total / 10) * 10))
+
+
+# Macro split (protein / carbs / fat as % of total calories) per fitness goal
+MACRO_SPLITS = {
+    "sèche": (0.35, 0.35, 0.30),          # weight loss: higher protein for satiety + muscle retention
+    "prise de masse": (0.30, 0.45, 0.25),  # muscle gain: more carbs to fuel training/recovery
+    "maintien": (0.25, 0.45, 0.30),        # maintenance: balanced
+}
+
+
+def compute_macro_goals(calorie_goal: int, fitness_goal: Optional[str], user: dict) -> dict:
+    """Compute daily macro targets (g). Custom user overrides always win; otherwise derive
+    from the calorie goal using a split appropriate to the user's fitness goal."""
+    protein_pct, carbs_pct, fat_pct = MACRO_SPLITS.get(fitness_goal, MACRO_SPLITS["maintien"])
+    auto_protein = round((calorie_goal * protein_pct) / 4)
+    auto_carbs = round((calorie_goal * carbs_pct) / 4)
+    auto_fat = round((calorie_goal * fat_pct) / 9)
+    auto_fiber = round(14 * calorie_goal / 1000)  # ~14g fiber per 1000 kcal (standard guideline)
+
+    protein_goal = user.get("protein_goal_g") if user.get("protein_goal_g") is not None else auto_protein
+    carbs_goal = user.get("carbs_goal_g") if user.get("carbs_goal_g") is not None else auto_carbs
+    fat_goal = user.get("fat_goal_g") if user.get("fat_goal_g") is not None else auto_fat
+    fiber_goal = user.get("fiber_goal_g") if user.get("fiber_goal_g") is not None else auto_fiber
+
+    return {
+        "protein_goal_g": round(protein_goal),
+        "carbs_goal_g": round(carbs_goal),
+        "fat_goal_g": round(fat_goal),
+        "fiber_goal_g": round(fiber_goal),
+        "protein_goal_auto_g": auto_protein,
+        "carbs_goal_auto_g": auto_carbs,
+        "fat_goal_auto_g": auto_fat,
+        "fiber_goal_auto_g": auto_fiber,
+        "is_custom": any(
+            user.get(k) is not None
+            for k in ("protein_goal_g", "carbs_goal_g", "fat_goal_g", "fiber_goal_g")
+        ),
+    }
 
 
 class AuthResponse(BaseModel):
@@ -207,6 +258,8 @@ class Meal(BaseModel):
     protein_g: Optional[float] = None
     carbs_g: Optional[float] = None
     fat_g: Optional[float] = None
+    fiber_g: Optional[float] = None
+    is_favorite: bool = False
     meal_type: Literal["petit-déjeuner", "déjeuner", "dîner", "collation"]
     date: str  # YYYY-MM-DD
     created_at: str = Field(default_factory=now_utc)
@@ -218,6 +271,7 @@ class MealCreate(BaseModel):
     protein_g: Optional[float] = Field(default=None, ge=0, le=500)
     carbs_g: Optional[float] = Field(default=None, ge=0, le=900)
     fat_g: Optional[float] = Field(default=None, ge=0, le=400)
+    fiber_g: Optional[float] = Field(default=None, ge=0, le=150)
     meal_type: Literal["petit-déjeuner", "déjeuner", "dîner", "collation"]
     date: Optional[str] = None
 
@@ -323,6 +377,10 @@ def public_user(u: dict) -> UserPublic:
         weight_kg=u.get("weight_kg"),
         activity_level=u.get("activity_level"),
         fitness_goal=u.get("fitness_goal"),
+        protein_goal_g=u.get("protein_goal_g"),
+        carbs_goal_g=u.get("carbs_goal_g"),
+        fat_goal_g=u.get("fat_goal_g"),
+        fiber_goal_g=u.get("fiber_goal_g"),
         created_at=u["created_at"],
     )
 
@@ -384,6 +442,26 @@ async def update_calorie_goal(body: CalorieGoalUpdate, user: dict = Depends(get_
 @api.put("/user/meals-per-day", response_model=UserPublic)
 async def update_meals_per_day(body: MealsPerDayUpdate, user: dict = Depends(get_current_user)):
     await db.users.update_one({"id": user["id"]}, {"$set": {"meals_per_day": body.meals_per_day}})
+    updated = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password_hash": 0})
+    return public_user(updated)
+
+
+@api.put("/user/macro-goals", response_model=UserPublic)
+async def update_macro_goals(body: MacroGoalsUpdate, user: dict = Depends(get_current_user)):
+    """Set custom daily macro targets, or reset to automatic calculation (use_auto=true).
+    Only fields actually present in the request are touched — any macro goal not
+    included stays exactly as it was (whether auto or previously customized)."""
+    raw = body.model_dump(exclude_unset=True)
+    raw.pop("use_auto", None)
+    if body.use_auto:
+        updates = {
+            "protein_goal_g": None, "carbs_goal_g": None,
+            "fat_goal_g": None, "fiber_goal_g": None,
+        }
+    else:
+        updates = raw  # only the keys the client actually sent get changed
+    if updates:
+        await db.users.update_one({"id": user["id"]}, {"$set": updates})
     updated = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password_hash": 0})
     return public_user(updated)
 
@@ -750,11 +828,68 @@ async def create_meal(body: MealCreate, user: dict = Depends(get_current_user)):
         protein_g=body.protein_g,
         carbs_g=body.carbs_g,
         fat_g=body.fat_g,
+        fiber_g=body.fiber_g,
         meal_type=body.meal_type,
         date=body.date or datetime.now(timezone.utc).strftime("%Y-%m-%d"),
     )
     await db.meals.insert_one(m.model_dump())
     return m
+
+
+@api.get("/meals/quick-add")
+async def quick_add_meals(user: dict = Depends(get_current_user)):
+    """Favorited meals + recently used distinct meals, for one-tap re-adding."""
+    favorites = await db.meals.find(
+        {"user_id": user["id"], "is_favorite": True}, {"_id": 0}
+    ).sort("created_at", -1).to_list(30)
+
+    recent_all = await db.meals.find(
+        {"user_id": user["id"]}, {"_id": 0}
+    ).sort("created_at", -1).to_list(150)
+
+    seen_names = {m["name"].strip().lower() for m in favorites}
+    recent: List[dict] = []
+    for m in recent_all:
+        key = m["name"].strip().lower()
+        if key in seen_names:
+            continue
+        seen_names.add(key)
+        recent.append(m)
+        if len(recent) >= 15:
+            break
+
+    return {"favorites": favorites, "recent": recent}
+
+
+@api.get("/meals/history")
+async def meals_history(user: dict = Depends(get_current_user)):
+    """Daily nutrition totals for past days (most recent first), like a journal."""
+    all_meals = await db.meals.find({"user_id": user["id"]}, {"_id": 0}).to_list(2000)
+    by_date: dict = {}
+    for m in all_meals:
+        d = m.get("date")
+        if not d:
+            continue
+        agg = by_date.setdefault(d, {
+            "date": d, "calories": 0, "protein_g": 0.0, "carbs_g": 0.0,
+            "fat_g": 0.0, "fiber_g": 0.0, "meals_count": 0,
+        })
+        agg["calories"] += int(m.get("calories", 0))
+        agg["protein_g"] += float(m.get("protein_g") or 0)
+        agg["carbs_g"] += float(m.get("carbs_g") or 0)
+        agg["fat_g"] += float(m.get("fat_g") or 0)
+        agg["fiber_g"] += float(m.get("fiber_g") or 0)
+        agg["meals_count"] += 1
+
+    goal = int(user.get("calorie_goal", 2000))
+    days = sorted(by_date.values(), key=lambda x: x["date"], reverse=True)
+    for d in days:
+        d["protein_g"] = round(d["protein_g"], 1)
+        d["carbs_g"] = round(d["carbs_g"], 1)
+        d["fat_g"] = round(d["fat_g"], 1)
+        d["fiber_g"] = round(d["fiber_g"], 1)
+        d["calorie_goal"] = goal
+    return {"days": days[:60]}
 
 
 @api.delete("/meals/{meal_id}")
@@ -763,6 +898,17 @@ async def delete_meal(meal_id: str, user: dict = Depends(get_current_user)):
     if res.deleted_count == 0:
         raise HTTPException(404, "Repas introuvable")
     return {"ok": True}
+
+
+@api.patch("/meals/{meal_id}/favorite", response_model=Meal)
+async def toggle_meal_favorite(meal_id: str, user: dict = Depends(get_current_user)):
+    doc = await db.meals.find_one({"id": meal_id, "user_id": user["id"]}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Repas introuvable")
+    new_val = not doc.get("is_favorite", False)
+    await db.meals.update_one({"id": meal_id}, {"$set": {"is_favorite": new_val}})
+    updated = await db.meals.find_one({"id": meal_id}, {"_id": 0})
+    return Meal(**updated)
 
 
 @api.post("/meals/suggest")
@@ -777,7 +923,7 @@ async def suggest_meals(body: MealSuggestInput, user: dict = Depends(get_current
         f"Préférences/contraintes: {body.preferences or 'aucune'}.\n\n"
         "Réponds avec ce schéma JSON exact:\n"
         '{"suggestions": [{"name": "string", "calories": int, "protein_g": number, "carbs_g": number, '
-        '"fat_g": number, "ingredients": ["string", ...], "description": "string court"}]}'
+        '"fat_g": number, "fiber_g": number, "ingredients": ["string", ...], "description": "string court"}]}'
     )
     data = await ask_llm_json(system, prompt, f"gen-meal-{user['id']}-{uuid.uuid4()}")
     suggestions = data.get("suggestions", [])[:3]
@@ -789,6 +935,7 @@ async def suggest_meals(body: MealSuggestInput, user: dict = Depends(get_current
             "protein_g": round(max(0.0, float(s.get("protein_g", 0) or 0)), 1),
             "carbs_g": round(max(0.0, float(s.get("carbs_g", 0) or 0)), 1),
             "fat_g": round(max(0.0, float(s.get("fat_g", 0) or 0)), 1),
+            "fiber_g": round(max(0.0, float(s.get("fiber_g", 0) or 0)), 1),
             "ingredients": [str(i)[:60] for i in s.get("ingredients", [])][:10],
             "description": str(s.get("description", ""))[:280],
         })
@@ -804,9 +951,9 @@ async def estimate_meal(body: MealEstimateInput, user: dict = Depends(get_curren
     )
     prompt = (
         f"Description du repas: « {body.description.strip()} »\n\n"
-        "Estime les calories totales et les macronutriments (protéines, glucides, lipides en grammes) "
-        "de ce repas. Sois réaliste, en tenant compte des quantités mentionnées. Si aucune quantité "
-        "n'est donnée, estime pour une portion adulte moyenne. Les macronutriments doivent être "
+        "Estime les calories totales et les macronutriments (protéines, glucides, lipides, fibres en "
+        "grammes) de ce repas. Sois réaliste, en tenant compte des quantités mentionnées. Si aucune "
+        "quantité n'est donnée, estime pour une portion adulte moyenne. Les macronutriments doivent être "
         "cohérents avec les calories totales (protéines et glucides ≈4 kcal/g, lipides ≈9 kcal/g).\n\n"
         'Réponds avec ce schéma JSON exact:\n'
         '{"name": "string court 3-6 mots", '
@@ -814,6 +961,7 @@ async def estimate_meal(body: MealEstimateInput, user: dict = Depends(get_curren
         '"protein_g": number, '
         '"carbs_g": number, '
         '"fat_g": number, '
+        '"fiber_g": number, '
         '"meal_type": "petit-déjeuner|déjeuner|dîner|collation", '
         '"breakdown": "string très court expliquant l\'estimation"}'
     )
@@ -827,6 +975,60 @@ async def estimate_meal(body: MealEstimateInput, user: dict = Depends(get_curren
         "protein_g": round(max(0.0, float(data.get("protein_g", 0) or 0)), 1),
         "carbs_g": round(max(0.0, float(data.get("carbs_g", 0) or 0)), 1),
         "fat_g": round(max(0.0, float(data.get("fat_g", 0) or 0)), 1),
+        "fiber_g": round(max(0.0, float(data.get("fiber_g", 0) or 0)), 1),
+        "meal_type": mt,
+        "breakdown": str(data.get("breakdown", ""))[:200],
+    }
+
+
+@api.post("/meals/scan-food")
+async def scan_food(body: MenuScanInput, user: dict = Depends(get_current_user)):
+    """Analyze a photo of a single food/drink item and estimate its nutrition."""
+    try:
+        image_bytes = base64.b64decode(body.image_base64)
+    except Exception:
+        raise HTTPException(400, "Image invalide")
+    if len(image_bytes) > 8_000_000:
+        raise HTTPException(400, "Image trop volumineuse (8 Mo max)")
+
+    system = (
+        "Tu es un nutritionniste. Tu identifies l'aliment ou la boisson visible sur la photo et "
+        "tu estimes ses calories et macronutriments pour la portion visible. Tu réponds STRICTEMENT "
+        "en JSON valide, sans texte hors JSON, sans code fences. Toutes les valeurs textuelles sont "
+        "en français."
+    )
+    prompt = (
+        "Identifie l'aliment ou la boisson sur cette photo, et estime ses calories et macronutriments "
+        "(protéines, glucides, lipides, fibres en grammes) pour la portion visible. Sois réaliste. "
+        "Si plusieurs aliments sont visibles, additionne le tout comme un seul repas.\n\n"
+        'Réponds avec ce schéma JSON exact:\n'
+        '{"reconnu": true, '
+        '"name": "string court 3-6 mots", '
+        '"calories": int, '
+        '"protein_g": number, '
+        '"carbs_g": number, '
+        '"fat_g": number, '
+        '"fiber_g": number, '
+        '"meal_type": "petit-déjeuner|déjeuner|dîner|collation", '
+        '"breakdown": "string très court expliquant l\'estimation"}\n\n'
+        "Si aucun aliment n'est identifiable sur la photo, réponds avec le même schéma mais "
+        '"reconnu": false et explique le souci dans "breakdown" (les autres champs à 0 ou vides).'
+    )
+    data = await ask_llm_json(
+        system, prompt, f"scan-food-{user['id']}-{uuid.uuid4()}",
+        image_bytes=image_bytes, image_mime=body.mime_type,
+    )
+    mt = str(data.get("meal_type", "collation")).lower()
+    if mt not in ("petit-déjeuner", "déjeuner", "dîner", "collation"):
+        mt = "collation"
+    return {
+        "reconnu": bool(data.get("reconnu", True)),
+        "name": str(data.get("name", "Repas"))[:80],
+        "calories": max(0, int(data.get("calories", 0) or 0)),
+        "protein_g": round(max(0.0, float(data.get("protein_g", 0) or 0)), 1),
+        "carbs_g": round(max(0.0, float(data.get("carbs_g", 0) or 0)), 1),
+        "fat_g": round(max(0.0, float(data.get("fat_g", 0) or 0)), 1),
+        "fiber_g": round(max(0.0, float(data.get("fiber_g", 0) or 0)), 1),
         "meal_type": mt,
         "breakdown": str(data.get("breakdown", ""))[:200],
     }
@@ -872,6 +1074,7 @@ async def scan_menu(body: MenuScanInput, user: dict = Depends(get_current_user))
         '"protein_g": number, '
         '"carbs_g": number, '
         '"fat_g": number, '
+        '"fiber_g": number, '
         '"raison": "string 2-3 phrases expliquant pourquoi ce plat est le meilleur choix", '
         '"autres_options": ["string", "string"]}\n\n'
         "Si le menu n'est pas lisible, réponds avec le même schéma mais "
@@ -888,6 +1091,7 @@ async def scan_menu(body: MenuScanInput, user: dict = Depends(get_current_user))
         "protein_g": round(max(0.0, float(data.get("protein_g", 0) or 0)), 1),
         "carbs_g": round(max(0.0, float(data.get("carbs_g", 0) or 0)), 1),
         "fat_g": round(max(0.0, float(data.get("fat_g", 0) or 0)), 1),
+        "fiber_g": round(max(0.0, float(data.get("fiber_g", 0) or 0)), 1),
         "raison": str(data.get("raison", ""))[:500],
         "autres_options": [str(o)[:100] for o in data.get("autres_options", [])][:3],
         "remaining_calories": remaining,
@@ -1189,11 +1393,9 @@ async def summary_today(user: dict = Depends(get_current_user)):
     protein_consumed = sum(float(m.get("protein_g") or 0) for m in meals)
     carbs_consumed = sum(float(m.get("carbs_g") or 0) for m in meals)
     fat_consumed = sum(float(m.get("fat_g") or 0) for m in meals)
+    fiber_consumed = sum(float(m.get("fiber_g") or 0) for m in meals)
     goal = int(user.get("calorie_goal", 2000))
-    # Default macro split (protein 30% / carbs 40% / fat 30% of calorie goal)
-    protein_goal = round((goal * 0.30) / 4)
-    carbs_goal = round((goal * 0.40) / 4)
-    fat_goal = round((goal * 0.30) / 9)
+    macros = compute_macro_goals(goal, user.get("fitness_goal"), user)
     # next workout = latest not performed
     next_wk_doc = await db.workouts.find_one(
         {"user_id": user["id"], "performed_at": None},
@@ -1210,15 +1412,19 @@ async def summary_today(user: dict = Depends(get_current_user)):
         "calorie_goal": goal,
         "calories_consumed": consumed,
         "calories_remaining": goal - consumed,
-        "protein_goal_g": protein_goal,
+        "protein_goal_g": macros["protein_goal_g"],
         "protein_consumed_g": round(protein_consumed, 1),
-        "protein_remaining_g": round(protein_goal - protein_consumed, 1),
-        "carbs_goal_g": carbs_goal,
+        "protein_remaining_g": round(macros["protein_goal_g"] - protein_consumed, 1),
+        "carbs_goal_g": macros["carbs_goal_g"],
         "carbs_consumed_g": round(carbs_consumed, 1),
-        "carbs_remaining_g": round(carbs_goal - carbs_consumed, 1),
-        "fat_goal_g": fat_goal,
+        "carbs_remaining_g": round(macros["carbs_goal_g"] - carbs_consumed, 1),
+        "fat_goal_g": macros["fat_goal_g"],
         "fat_consumed_g": round(fat_consumed, 1),
-        "fat_remaining_g": round(fat_goal - fat_consumed, 1),
+        "fat_remaining_g": round(macros["fat_goal_g"] - fat_consumed, 1),
+        "fiber_goal_g": macros["fiber_goal_g"],
+        "fiber_consumed_g": round(fiber_consumed, 1),
+        "fiber_remaining_g": round(macros["fiber_goal_g"] - fiber_consumed, 1),
+        "macro_goals_are_custom": macros["is_custom"],
         "meals_today": len(meals),
         "next_workout": Workout(**next_wk_doc).model_dump() if next_wk_doc else None,
         "workouts_done_this_week": done_this_week,

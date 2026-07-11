@@ -35,6 +35,7 @@ export default function NutritionScreen() {
   const [mealType, setMealType] = useState<Meal["meal_type"]>("petit-déjeuner");
   const [mealDesc, setMealDesc] = useState("");
   const [estimating, setEstimating] = useState(false);
+  const [foodScanning, setFoodScanning] = useState(false);
   const [breakdown, setBreakdown] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -142,6 +143,54 @@ export default function NutritionScreen() {
       setError(e.message ?? "Estimation impossible");
     } finally {
       setEstimating(false);
+    }
+  };
+
+  const pickAndScanFood = async (source: "camera" | "library") => {
+    setError(null);
+    let result: ImagePicker.ImagePickerResult;
+    if (source === "camera") {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) {
+        setError("Autorisation caméra refusée");
+        return;
+      }
+      result = await ImagePicker.launchCameraAsync({ quality: 0.7, base64: true });
+    } else {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        setError("Autorisation galerie refusée");
+        return;
+      }
+      result = await ImagePicker.launchImageLibraryAsync({ quality: 0.7, base64: true });
+    }
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    if (!asset.base64) {
+      setError("Impossible de lire l'image");
+      return;
+    }
+    setFoodScanning(true);
+    setBreakdown(null);
+    try {
+      const mime = asset.mimeType || "image/jpeg";
+      const res = await api.scanFood(asset.base64, mime);
+      if (!res.reconnu) {
+        setError(res.breakdown || "Aliment non reconnu, réessayez avec une photo plus nette.");
+        return;
+      }
+      setMealName(res.name);
+      setMealCal(String(res.calories));
+      setMealProtein(String(res.protein_g ?? ""));
+      setMealCarbs(String(res.carbs_g ?? ""));
+      setMealFat(String(res.fat_g ?? ""));
+      setMealFiber(String(res.fiber_g ?? ""));
+      setMealType(res.meal_type);
+      setBreakdown(res.breakdown);
+    } catch (e: any) {
+      setError(e.message ?? "Analyse impossible");
+    } finally {
+      setFoodScanning(false);
     }
   };
 
@@ -486,6 +535,35 @@ export default function NutritionScreen() {
                   {estimating ? "Estimation en cours…" : "Estimer les calories via IA"}
                 </Text>
               </Pressable>
+
+              <View style={styles.orDivider}>
+                <View style={styles.orLine} />
+                <Text style={styles.orTxt}>ou</Text>
+                <View style={styles.orLine} />
+              </View>
+
+              <View style={{ flexDirection: "row", gap: spacing.sm }}>
+                <Pressable
+                  onPress={() => pickAndScanFood("camera")}
+                  disabled={foodScanning}
+                  style={[styles.photoBtn, foodScanning && { opacity: 0.4 }]}
+                  testID="meal-photo-camera-btn"
+                >
+                  <Ionicons name="camera" size={16} color={colors.brandPrimary} />
+                  <Text style={styles.estimateBtnTxt}>
+                    {foodScanning ? "Analyse…" : "Prendre en photo"}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => pickAndScanFood("library")}
+                  disabled={foodScanning}
+                  style={[styles.photoBtn, foodScanning && { opacity: 0.4 }]}
+                  testID="meal-photo-library-btn"
+                >
+                  <Ionicons name="image-outline" size={16} color={colors.brandPrimary} />
+                  <Text style={styles.estimateBtnTxt}>Galerie</Text>
+                </Pressable>
+              </View>
 
               {breakdown ? (
                 <View style={styles.breakdownBox} testID="meal-breakdown">
@@ -847,6 +925,15 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   estimateBtnTxt: { color: colors.brandPrimary, fontSize: font.base, fontWeight: "500" },
+  orDivider: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md },
+  orLine: { flex: 1, height: 1, backgroundColor: colors.divider },
+  orTxt: { fontSize: font.sm, color: colors.onSurfaceTertiary },
+  photoBtn: {
+    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm,
+    padding: spacing.sm, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.brandPrimary, backgroundColor: colors.surface,
+    marginBottom: spacing.md,
+  },
   breakdownBox: {
     padding: spacing.sm, backgroundColor: colors.surfaceSecondary,
     borderRadius: radius.md, marginBottom: spacing.md,

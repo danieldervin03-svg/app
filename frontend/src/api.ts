@@ -213,6 +213,18 @@ export type MealSuggestion = {
   description: string;
 };
 
+export type FoodScanResult = {
+  reconnu: boolean;
+  name: string;
+  calories: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  fiber_g: number;
+  meal_type: Meal["meal_type"];
+  breakdown: string;
+};
+
 export type MenuScanResult = {
   menu_lisible: boolean;
   plat_recommande: string;
@@ -333,8 +345,10 @@ export const api = {
     }>("/meals/estimate", { method: "POST", body: { description } }),
   scanMenu: (image_base64: string, mime_type: string) =>
     request<MenuScanResult>("/meals/scan-menu", { method: "POST", body: { image_base64, mime_type } }),
+  scanFood: (image_base64: string, mime_type: string) =>
+    request<FoodScanResult>("/meals/scan-food", { method: "POST", body: { image_base64, mime_type } }),
   updateMacroGoals: (body: {
-    protein_goal_g?: number; carbs_goal_g?: number; fat_goal_g?: number; fiber_goal_g?: number;
+    protein_goal_g?: number | null; carbs_goal_g?: number | null; fat_goal_g?: number | null; fiber_goal_g?: number | null;
     use_auto?: boolean;
   }) => request<User>("/user/macro-goals", { method: "PUT", body }),
 
