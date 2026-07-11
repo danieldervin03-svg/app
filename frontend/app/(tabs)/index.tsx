@@ -87,6 +87,7 @@ export default function HomeScreen() {
                 { key: "protein", label: "Protéines", icon: "flash" as const, color: "#FB7185", remaining: summary?.protein_remaining_g, goal: summary?.protein_goal_g },
                 { key: "carbs", label: "Glucides", icon: "leaf" as const, color: "#FBBF24", remaining: summary?.carbs_remaining_g, goal: summary?.carbs_goal_g },
                 { key: "fat", label: "Lipides", icon: "water" as const, color: "#60A5FA", remaining: summary?.fat_remaining_g, goal: summary?.fat_goal_g },
+                { key: "fiber", label: "Fibres", icon: "nutrition" as const, color: "#34D399", remaining: summary?.fiber_remaining_g, goal: summary?.fiber_goal_g },
               ].map((m) => {
                 const g = m.goal ?? 0;
                 const r = m.remaining ?? g;

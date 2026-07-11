@@ -20,10 +20,20 @@ export default function ProfileScreen() {
   const [goalOpen, setGoalOpen] = useState(false);
   const [healthOpen, setHealthOpen] = useState(false);
   const [mealsOpen, setMealsOpen] = useState(false);
+  const [macrosOpen, setMacrosOpen] = useState(false);
 
   const [goal, setGoal] = useState(String(user?.calorie_goal ?? 2000));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Custom macro goals form
+  const [proteinG, setProteinG] = useState(user?.protein_goal_g != null ? String(user.protein_goal_g) : "");
+  const [carbsG, setCarbsG] = useState(user?.carbs_goal_g != null ? String(user.carbs_goal_g) : "");
+  const [fatG, setFatG] = useState(user?.fat_goal_g != null ? String(user.fat_goal_g) : "");
+  const [fiberG, setFiberG] = useState(user?.fiber_goal_g != null ? String(user.fiber_goal_g) : "");
+  const [macroSaving, setMacroSaving] = useState(false);
+  const [macroError, setMacroError] = useState<string | null>(null);
+  const isCustomMacros = user?.protein_goal_g != null || user?.carbs_goal_g != null || user?.fat_goal_g != null || user?.fiber_goal_g != null;
 
   // Health form
   const [sex, setSex] = useState<ProfileInput["sex"]>(user?.sex ?? "homme");
@@ -56,6 +66,39 @@ export default function ProfileScreen() {
       setError(e.message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveMacros = async () => {
+    setMacroError(null);
+    setMacroSaving(true);
+    try {
+      const u = await api.updateMacroGoals({
+        protein_goal_g: proteinG.trim() ? parseFloat(proteinG.replace(",", ".")) : undefined,
+        carbs_goal_g: carbsG.trim() ? parseFloat(carbsG.replace(",", ".")) : undefined,
+        fat_goal_g: fatG.trim() ? parseFloat(fatG.replace(",", ".")) : undefined,
+        fiber_goal_g: fiberG.trim() ? parseFloat(fiberG.replace(",", ".")) : undefined,
+      });
+      setUser(u);
+      setMacrosOpen(false);
+    } catch (e: any) {
+      setMacroError(e.message);
+    } finally {
+      setMacroSaving(false);
+    }
+  };
+
+  const resetMacrosToAuto = async () => {
+    setMacroSaving(true);
+    try {
+      const u = await api.updateMacroGoals({ use_auto: true });
+      setUser(u);
+      setProteinG(""); setCarbsG(""); setFatG(""); setFiberG("");
+      setMacrosOpen(false);
+    } catch (e: any) {
+      setMacroError(e.message);
+    } finally {
+      setMacroSaving(false);
     }
   };
 
@@ -167,6 +210,13 @@ export default function ProfileScreen() {
           value={`${user?.meals_per_day ?? 4} repas · ~${Math.round((user?.calorie_goal ?? 2000) / (user?.meals_per_day ?? 4))} kcal/repas`}
           onPress={() => setMealsOpen(true)}
           testID="profile-meals-row"
+        />
+        <Row
+          icon="nutrition-outline"
+          label="Macronutriments"
+          value={isCustomMacros ? "Personnalisés" : "Automatique (selon objectif)"}
+          onPress={() => setMacrosOpen(true)}
+          testID="profile-macros-row"
         />
 
         <Text style={styles.section}>Compte</Text>
@@ -282,6 +332,49 @@ export default function ProfileScreen() {
               <Text style={{ color: colors.onSurfaceSecondary }}>Fermer</Text>
             </Pressable>
           </View>
+        </View>
+      </Modal>
+
+      {/* Custom macro goals */}
+      <Modal visible={macrosOpen} transparent animationType="slide" onRequestClose={() => setMacrosOpen(false)}>
+        <View style={styles.modalBg}>
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ width: "100%" }}>
+            <View style={styles.modalCard}>
+              <View style={styles.drag} />
+              <Text style={styles.modalTitle}>Macronutriments</Text>
+              <Text style={styles.modalSub}>
+                Par défaut, tes objectifs de macros sont calculés automatiquement selon ton objectif
+                ({user?.fitness_goal ?? "maintien"}). Laisse un champ vide pour garder le calcul automatique.
+              </Text>
+              <View style={{ flexDirection: "row", gap: spacing.sm }}>
+                <View style={{ flex: 1 }}>
+                  <Input label="Protéines (g)" placeholder="Auto" keyboardType="decimal-pad" value={proteinG} onChangeText={setProteinG} testID="profile-macro-protein" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Input label="Glucides (g)" placeholder="Auto" keyboardType="decimal-pad" value={carbsG} onChangeText={setCarbsG} testID="profile-macro-carbs" />
+                </View>
+              </View>
+              <View style={{ flexDirection: "row", gap: spacing.sm }}>
+                <View style={{ flex: 1 }}>
+                  <Input label="Lipides (g)" placeholder="Auto" keyboardType="decimal-pad" value={fatG} onChangeText={setFatG} testID="profile-macro-fat" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Input label="Fibres (g)" placeholder="Auto" keyboardType="decimal-pad" value={fiberG} onChangeText={setFiberG} testID="profile-macro-fiber" />
+                </View>
+              </View>
+              {macroError ? <Text style={{ color: colors.error, textAlign: "center" }}>{macroError}</Text> : null}
+              <Button title="Enregistrer" onPress={saveMacros} loading={macroSaving} testID="profile-macro-save" />
+              {isCustomMacros ? (
+                <Pressable onPress={resetMacrosToAuto} style={{ alignItems: "center", padding: spacing.md }} testID="profile-macro-reset">
+                  <Text style={{ color: colors.brandPrimary, fontWeight: "500" }}>Revenir au calcul automatique</Text>
+                </Pressable>
+              ) : (
+                <Pressable onPress={() => setMacrosOpen(false)} style={{ alignItems: "center", padding: spacing.md }}>
+                  <Text style={{ color: colors.onSurfaceSecondary }}>Annuler</Text>
+                </Pressable>
+              )}
+            </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
     </SafeAreaView>

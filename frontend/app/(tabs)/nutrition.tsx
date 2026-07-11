@@ -7,7 +7,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as ImagePicker from "expo-image-picker";
 import { colors, font, radius, spacing } from "@/src/theme";
 import { Button, Input, EmptyState } from "@/src/components/ui";
-import { api, Meal, MealSuggestion, MenuScanResult } from "@/src/api";
+import { api, Meal, MealSuggestion, MenuScanResult, TodaySummary } from "@/src/api";
 import { useAuth } from "@/src/auth";
 
 const MEAL_TYPES: Meal["meal_type"][] = ["petit-déjeuner", "déjeuner", "dîner", "collation"];
@@ -19,6 +19,7 @@ function todayStr() {
 export default function NutritionScreen() {
   const { user } = useAuth();
   const [meals, setMeals] = useState<Meal[]>([]);
+  const [summary, setSummary] = useState<TodaySummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -30,6 +31,7 @@ export default function NutritionScreen() {
   const [mealProtein, setMealProtein] = useState("");
   const [mealCarbs, setMealCarbs] = useState("");
   const [mealFat, setMealFat] = useState("");
+  const [mealFiber, setMealFiber] = useState("");
   const [mealType, setMealType] = useState<Meal["meal_type"]>("petit-déjeuner");
   const [mealDesc, setMealDesc] = useState("");
   const [estimating, setEstimating] = useState(false);
@@ -48,26 +50,68 @@ export default function NutritionScreen() {
   const [scanResult, setScanResult] = useState<MenuScanResult | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
 
+  const [quickFavorites, setQuickFavorites] = useState<Meal[]>([]);
+  const [quickRecent, setQuickRecent] = useState<Meal[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyDays, setHistoryDays] = useState<
+    { date: string; calories: number; protein_g: number; carbs_g: number; fat_g: number; fiber_g: number; meals_count: number; calorie_goal: number }[]
+  >([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
   const load = useCallback(async () => {
     try {
-      const list = await api.listMeals(todayStr());
+      const [list, s, quick] = await Promise.all([
+        api.listMeals(todayStr()),
+        api.summaryToday(),
+        api.quickAddMeals(),
+      ]);
       setMeals(list);
+      setSummary(s);
+      setQuickFavorites(quick.favorites);
+      setQuickRecent(quick.recent);
     } catch {}
     setLoading(false);
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  const goal = user?.calorie_goal ?? 2000;
-  const consumed = meals.reduce((s, m) => s + m.calories, 0);
+  const goal = summary?.calorie_goal ?? user?.calorie_goal ?? 2000;
+  const consumed = summary?.calories_consumed ?? meals.reduce((s, m) => s + m.calories, 0);
   const remaining = Math.max(0, goal - consumed);
   const percent = Math.min(1, consumed / Math.max(1, goal));
-  const proteinConsumed = meals.reduce((s, m) => s + (m.protein_g ?? 0), 0);
-  const carbsConsumed = meals.reduce((s, m) => s + (m.carbs_g ?? 0), 0);
-  const fatConsumed = meals.reduce((s, m) => s + (m.fat_g ?? 0), 0);
-  const proteinGoal = Math.round((goal * 0.30) / 4);
-  const carbsGoal = Math.round((goal * 0.40) / 4);
-  const fatGoal = Math.round((goal * 0.30) / 9);
+
+  const openHistory = async () => {
+    setHistoryOpen(true);
+    setHistoryLoading(true);
+    try {
+      const res = await api.mealsHistory();
+      setHistoryDays(res.days);
+    } catch {} finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const quickAdd = async (m: Meal) => {
+    try {
+      await api.createMeal({
+        name: m.name,
+        calories: m.calories,
+        protein_g: m.protein_g ?? undefined,
+        carbs_g: m.carbs_g ?? undefined,
+        fat_g: m.fat_g ?? undefined,
+        fiber_g: m.fiber_g ?? undefined,
+        meal_type: m.meal_type,
+      });
+      await load();
+    } catch {}
+  };
+
+  const toggleFavorite = async (id: string) => {
+    try {
+      await api.toggleMealFavorite(id);
+      await load();
+    } catch {}
+  };
 
   const mealsPerDay = user?.meals_per_day ?? 4;
   const mealsRemaining = Math.max(1, mealsPerDay - meals.length);
@@ -91,6 +135,7 @@ export default function NutritionScreen() {
       setMealProtein(String(res.protein_g ?? ""));
       setMealCarbs(String(res.carbs_g ?? ""));
       setMealFat(String(res.fat_g ?? ""));
+      setMealFiber(String(res.fiber_g ?? ""));
       setMealType(res.meal_type);
       setBreakdown(res.breakdown);
     } catch (e: any) {
@@ -133,10 +178,11 @@ export default function NutritionScreen() {
         protein_g: mealProtein.trim() ? parseFloat(mealProtein.replace(",", ".")) : undefined,
         carbs_g: mealCarbs.trim() ? parseFloat(mealCarbs.replace(",", ".")) : undefined,
         fat_g: mealFat.trim() ? parseFloat(mealFat.replace(",", ".")) : undefined,
+        fiber_g: mealFiber.trim() ? parseFloat(mealFiber.replace(",", ".")) : undefined,
         meal_type: mealType,
       });
       setMealName(""); setMealCal(""); setMealDesc(""); setBreakdown(null);
-      setMealProtein(""); setMealCarbs(""); setMealFat("");
+      setMealProtein(""); setMealCarbs(""); setMealFat(""); setMealFiber("");
       setMealType("petit-déjeuner");
       setAddOpen(false);
       await load();
@@ -177,6 +223,7 @@ export default function NutritionScreen() {
       protein_g: s.protein_g,
       carbs_g: s.carbs_g,
       fat_g: s.fat_g,
+      fiber_g: s.fiber_g,
       meal_type: suggestType,
     });
     await load();
@@ -230,6 +277,7 @@ export default function NutritionScreen() {
         protein_g: scanResult.protein_g,
         carbs_g: scanResult.carbs_g,
         fat_g: scanResult.fat_g,
+        fiber_g: scanResult.fiber_g,
         meal_type: suggestType,
       });
       setScanOpen(false);
@@ -278,9 +326,10 @@ export default function NutritionScreen() {
 
               <View style={styles.macroRow}>
                 {[
-                  { key: "protein", label: "Protéines", icon: "flash" as const, color: "#FB7185", consumed: proteinConsumed, goal: proteinGoal },
-                  { key: "carbs", label: "Glucides", icon: "leaf" as const, color: "#FBBF24", consumed: carbsConsumed, goal: carbsGoal },
-                  { key: "fat", label: "Lipides", icon: "water" as const, color: "#60A5FA", consumed: fatConsumed, goal: fatGoal },
+                  { key: "protein", label: "Protéines", icon: "flash" as const, color: "#FB7185", consumed: summary?.protein_consumed_g ?? 0, goal: summary?.protein_goal_g ?? 0 },
+                  { key: "carbs", label: "Glucides", icon: "leaf" as const, color: "#FBBF24", consumed: summary?.carbs_consumed_g ?? 0, goal: summary?.carbs_goal_g ?? 0 },
+                  { key: "fat", label: "Lipides", icon: "water" as const, color: "#60A5FA", consumed: summary?.fat_consumed_g ?? 0, goal: summary?.fat_goal_g ?? 0 },
+                  { key: "fiber", label: "Fibres", icon: "nutrition" as const, color: "#34D399", consumed: summary?.fiber_consumed_g ?? 0, goal: summary?.fiber_goal_g ?? 0 },
                 ].map((m) => {
                   const pct = m.goal > 0 ? Math.min(1, m.consumed / m.goal) : 0;
                   return (
@@ -299,6 +348,9 @@ export default function NutritionScreen() {
                   );
                 })}
               </View>
+              {summary?.macro_goals_are_custom ? (
+                <Text style={styles.customBadgeTxt}>🎯 Objectifs personnalisés</Text>
+              ) : null}
 
               <View style={styles.perMealRow}>
                 <Ionicons name="restaurant-outline" size={14} color="rgba(255,255,255,0.85)" />
@@ -327,7 +379,35 @@ export default function NutritionScreen() {
               <Text style={styles.actionTxtAlt}>Scanner un menu</Text>
             </Pressable>
 
-            <Text style={styles.sectionH}>Repas du jour</Text>
+            {quickFavorites.length > 0 || quickRecent.length > 0 ? (
+              <View style={styles.quickSection}>
+                <Text style={styles.sectionH}>Repas rapides</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingRight: spacing.lg }}>
+                  {quickFavorites.map((m) => (
+                    <Pressable key={`fav-${m.id}`} style={styles.quickChip} onPress={() => quickAdd(m)} testID={`quick-add-fav-${m.id}`}>
+                      <Ionicons name="star" size={13} color="#FBBF24" />
+                      <Text style={styles.quickChipTxt} numberOfLines={1}>{m.name}</Text>
+                      <Text style={styles.quickChipCal}>{m.calories} kcal</Text>
+                    </Pressable>
+                  ))}
+                  {quickRecent.map((m) => (
+                    <Pressable key={`rec-${m.id}`} style={styles.quickChip} onPress={() => quickAdd(m)} testID={`quick-add-rec-${m.id}`}>
+                      <Ionicons name="time-outline" size={13} color={colors.onSurfaceSecondary} />
+                      <Text style={styles.quickChipTxt} numberOfLines={1}>{m.name}</Text>
+                      <Text style={styles.quickChipCal}>{m.calories} kcal</Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
+
+            <View style={styles.rowBetweenHeader}>
+              <Text style={styles.sectionH}>Repas du jour</Text>
+              <Pressable onPress={openHistory} style={styles.historyLink} testID="nutrition-history-open">
+                <Ionicons name="calendar-outline" size={15} color={colors.brandPrimary} />
+                <Text style={styles.historyLinkTxt}>Historique</Text>
+              </Pressable>
+            </View>
           </View>
         }
         ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
@@ -346,9 +426,22 @@ export default function NutritionScreen() {
                   <Text style={{ color: "#FBBF24", fontWeight: "600" }}>G {item.carbs_g ?? 0}g</Text>
                   <Text style={{ color: colors.onSurfaceTertiary }}> · </Text>
                   <Text style={{ color: "#60A5FA", fontWeight: "600" }}>L {item.fat_g ?? 0}g</Text>
+                  {item.fiber_g != null ? (
+                    <>
+                      <Text style={{ color: colors.onSurfaceTertiary }}> · </Text>
+                      <Text style={{ color: "#34D399", fontWeight: "600" }}>F {item.fiber_g}g</Text>
+                    </>
+                  ) : null}
                 </Text>
               ) : null}
             </View>
+            <Pressable onPress={() => toggleFavorite(item.id)} style={styles.favBtn} testID={`meal-fav-${item.id}`}>
+              <Ionicons
+                name={item.is_favorite ? "star" : "star-outline"}
+                size={19}
+                color={item.is_favorite ? "#FBBF24" : colors.onSurfaceTertiary}
+              />
+            </Pressable>
             <Pressable onPress={() => deleteMeal(item.id)} style={styles.deleteBtn} testID={`meal-delete-${item.id}`}>
               <Ionicons name="trash-outline" size={18} color={colors.error} />
             </Pressable>
@@ -409,8 +502,13 @@ export default function NutritionScreen() {
                 <View style={{ flex: 1 }}>
                   <Input label="Glucides (g)" placeholder="50" keyboardType="decimal-pad" value={mealCarbs} onChangeText={setMealCarbs} testID="meal-carbs-input" />
                 </View>
+              </View>
+              <View style={{ flexDirection: "row", gap: spacing.sm }}>
                 <View style={{ flex: 1 }}>
                   <Input label="Lipides (g)" placeholder="15" keyboardType="decimal-pad" value={mealFat} onChangeText={setMealFat} testID="meal-fat-input" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Input label="Fibres (g)" placeholder="5" keyboardType="decimal-pad" value={mealFiber} onChangeText={setMealFiber} testID="meal-fiber-input" />
                 </View>
               </View>
               <Text style={styles.subLabel}>Type</Text>
@@ -475,6 +573,12 @@ export default function NutritionScreen() {
                           <Text style={{ color: "#FBBF24", fontWeight: "600" }}>G {s.carbs_g}g</Text>
                           <Text style={{ color: colors.onSurfaceSecondary }}> · </Text>
                           <Text style={{ color: "#60A5FA", fontWeight: "600" }}>L {s.fat_g}g</Text>
+                          {s.fiber_g != null ? (
+                            <>
+                              <Text style={{ color: colors.onSurfaceSecondary }}> · </Text>
+                              <Text style={{ color: "#34D399", fontWeight: "600" }}>F {s.fiber_g}g</Text>
+                            </>
+                          ) : null}
                         </>
                       ) : null}
                     </Text>
@@ -545,6 +649,8 @@ export default function NutritionScreen() {
                         <Text style={{ color: "#FBBF24", fontWeight: "600" }}>G {scanResult.carbs_g}g</Text>
                         <Text style={{ color: colors.onSurfaceSecondary }}> · </Text>
                         <Text style={{ color: "#60A5FA", fontWeight: "600" }}>L {scanResult.fat_g}g</Text>
+                        <Text style={{ color: colors.onSurfaceSecondary }}> · </Text>
+                        <Text style={{ color: "#34D399", fontWeight: "600" }}>F {scanResult.fiber_g}g</Text>
                       </Text>
                       <Text style={styles.sugDesc}>{scanResult.raison}</Text>
                       {scanResult.autres_options.length > 0 ? (
@@ -586,6 +692,54 @@ export default function NutritionScreen() {
               </Pressable>
             </View>
           </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
+      {/* Daily nutrition history modal */}
+      <Modal visible={historyOpen} transparent animationType="slide" onRequestClose={() => setHistoryOpen(false)}>
+        <View style={styles.modalBg}>
+          <View style={[styles.modalCard, { maxHeight: "85%" }]}>
+            <View style={styles.dragHandle} />
+            <Text style={styles.modalTitle}>Historique alimentaire</Text>
+            {historyLoading ? (
+              <ActivityIndicator color={colors.brandPrimary} style={{ marginTop: spacing.xl }} />
+            ) : historyDays.length === 0 ? (
+              <EmptyState title="Aucun historique" subtitle="Ajoutez des repas pour voir votre historique ici." />
+            ) : (
+              <ScrollView>
+                {historyDays.map((d) => {
+                  const pct = d.calorie_goal > 0 ? Math.min(1, d.calories / d.calorie_goal) : 0;
+                  const dateLabel = new Date(d.date + "T00:00:00").toLocaleDateString("fr-FR", {
+                    weekday: "long", day: "numeric", month: "long",
+                  });
+                  return (
+                    <View key={d.date} style={styles.historyDayCard}>
+                      <View style={styles.rowBetween}>
+                        <Text style={styles.historyDate}>{dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1)}</Text>
+                        <Text style={styles.historyCal}>{d.calories} / {d.calorie_goal} kcal</Text>
+                      </View>
+                      <View style={styles.historyBarTrack}>
+                        <View style={[styles.historyBarFill, { width: `${pct * 100}%`, backgroundColor: pct > 1 ? colors.error : colors.brandPrimary }]} />
+                      </View>
+                      <Text style={styles.historyMacros}>
+                        <Text style={{ color: "#FB7185", fontWeight: "600" }}>P {d.protein_g}g</Text>
+                        <Text style={{ color: colors.onSurfaceTertiary }}> · </Text>
+                        <Text style={{ color: "#FBBF24", fontWeight: "600" }}>G {d.carbs_g}g</Text>
+                        <Text style={{ color: colors.onSurfaceTertiary }}> · </Text>
+                        <Text style={{ color: "#60A5FA", fontWeight: "600" }}>L {d.fat_g}g</Text>
+                        <Text style={{ color: colors.onSurfaceTertiary }}> · </Text>
+                        <Text style={{ color: "#34D399", fontWeight: "600" }}>F {d.fiber_g}g</Text>
+                        <Text style={{ color: colors.onSurfaceSecondary }}> · {d.meals_count} repas</Text>
+                      </Text>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            )}
+            <Pressable onPress={() => setHistoryOpen(false)} style={{ alignItems: "center", padding: spacing.md }}>
+              <Text style={{ color: colors.onSurfaceSecondary }}>Fermer</Text>
+            </Pressable>
+          </View>
         </View>
       </Modal>
     </SafeAreaView>
@@ -655,7 +809,28 @@ const styles = StyleSheet.create({
   mealName: { fontSize: font.lg, color: colors.onSurface },
   mealSub: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginTop: 2, textTransform: "capitalize" },
   mealMacros: { fontSize: font.sm, color: colors.onSurfaceTertiary, marginTop: 2 },
+  favBtn: { padding: spacing.sm },
   deleteBtn: { padding: spacing.sm },
+  customBadgeTxt: { fontSize: font.sm, color: "rgba(255,255,255,0.9)", marginTop: spacing.sm, fontWeight: "500" },
+  rowBetweenHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: spacing.xl, marginBottom: spacing.md },
+  historyLink: { flexDirection: "row", alignItems: "center", gap: 4 },
+  historyLinkTxt: { fontSize: font.sm, color: colors.brandPrimary, fontWeight: "500" },
+  quickSection: { marginTop: spacing.lg },
+  quickChip: {
+    backgroundColor: colors.surface, borderRadius: radius.md, padding: spacing.sm,
+    borderWidth: 1, borderColor: colors.divider, minWidth: 130, maxWidth: 160,
+  },
+  quickChipTxt: { fontSize: font.sm, color: colors.onSurface, fontWeight: "500" },
+  quickChipCal: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginTop: 2 },
+  historyDayCard: {
+    backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  historyDate: { fontSize: font.base, color: colors.onSurface, fontWeight: "500", textTransform: "capitalize" },
+  historyCal: { fontSize: font.sm, color: colors.onSurfaceSecondary },
+  historyBarTrack: { height: 6, backgroundColor: colors.surfaceTertiary, borderRadius: radius.pill, overflow: "hidden", marginTop: spacing.sm },
+  historyBarFill: { height: "100%", borderRadius: radius.pill },
+  historyMacros: { fontSize: font.sm, marginTop: spacing.sm },
 
   modalBg: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-end" },
   modalCard: {

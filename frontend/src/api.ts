@@ -17,19 +17,36 @@ export async function setToken(token: string | null) {
 
 async function request<T>(
   path: string,
-  opts: { method?: string; body?: any; auth?: boolean } = {},
+  opts: { method?: string; body?: any; auth?: boolean; timeoutMs?: number } = {},
 ): Promise<T> {
-  const { method = "GET", body, auth = true } = opts;
+  const { method = "GET", body, auth = true, timeoutMs = 15000 } = opts;
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (auth) {
     const token = await getToken();
     if (token) headers.Authorization = `Bearer ${token}`;
   }
-  const res = await fetch(`${BASE}/api${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/api${path}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+  } catch (e: any) {
+    const isTimeout = e?.name === "AbortError";
+    const err: ApiError = {
+      message: isTimeout
+        ? "Le serveur met du temps à répondre, réessayez dans quelques instants."
+        : "Connexion impossible, vérifiez votre réseau.",
+      status: 0,
+    };
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) {
@@ -57,6 +74,10 @@ export type User = {
   weight_kg: number | null;
   activity_level: "sédentaire" | "léger" | "modéré" | "actif" | "très actif" | null;
   fitness_goal: "prise de masse" | "sèche" | "maintien" | null;
+  protein_goal_g: number | null;
+  carbs_goal_g: number | null;
+  fat_goal_g: number | null;
+  fiber_goal_g: number | null;
   created_at: string;
 };
 
@@ -133,6 +154,8 @@ export type Meal = {
   protein_g?: number | null;
   carbs_g?: number | null;
   fat_g?: number | null;
+  fiber_g?: number | null;
+  is_favorite?: boolean;
   meal_type: "petit-déjeuner" | "déjeuner" | "dîner" | "collation";
   date: string;
   created_at: string;
@@ -170,6 +193,10 @@ export type TodaySummary = {
   fat_goal_g: number;
   fat_consumed_g: number;
   fat_remaining_g: number;
+  fiber_goal_g: number;
+  fiber_consumed_g: number;
+  fiber_remaining_g: number;
+  macro_goals_are_custom: boolean;
   meals_today: number;
   next_workout: Workout | null;
   workouts_done_this_week: number;
@@ -181,6 +208,7 @@ export type MealSuggestion = {
   protein_g?: number;
   carbs_g?: number;
   fat_g?: number;
+  fiber_g?: number;
   ingredients: string[];
   description: string;
 };
@@ -192,6 +220,7 @@ export type MenuScanResult = {
   protein_g: number;
   carbs_g: number;
   fat_g: number;
+  fiber_g: number;
   raison: string;
   autres_options: string[];
   remaining_calories: number;
@@ -220,7 +249,7 @@ export const api = {
     request<{ token: string; user: User }>("/auth/register", { method: "POST", body, auth: false }),
   login: (body: { email: string; password: string }) =>
     request<{ token: string; user: User }>("/auth/login", { method: "POST", body, auth: false }),
-  me: () => request<User>("/auth/me"),
+  me: () => request<User>("/auth/me", { timeoutMs: 30000 }),
   updateCalorieGoal: (calorie_goal: number) =>
     request<User>("/user/calorie-goal", { method: "PUT", body: { calorie_goal } }),
   updateProfile: (body: ProfileInput) =>
@@ -272,10 +301,20 @@ export const api = {
     protein_g?: number;
     carbs_g?: number;
     fat_g?: number;
+    fiber_g?: number;
     meal_type: Meal["meal_type"];
     date?: string;
   }) => request<Meal>("/meals", { method: "POST", body }),
   deleteMeal: (id: string) => request<{ ok: boolean }>(`/meals/${id}`, { method: "DELETE" }),
+  toggleMealFavorite: (id: string) => request<Meal>(`/meals/${id}/favorite`, { method: "PATCH" }),
+  quickAddMeals: () => request<{ favorites: Meal[]; recent: Meal[] }>("/meals/quick-add"),
+  mealsHistory: () =>
+    request<{
+      days: {
+        date: string; calories: number; protein_g: number; carbs_g: number;
+        fat_g: number; fiber_g: number; meals_count: number; calorie_goal: number;
+      }[];
+    }>("/meals/history"),
   suggestMeals: (body: {
     remaining_calories: number;
     meal_type: Meal["meal_type"];
@@ -288,11 +327,16 @@ export const api = {
       protein_g: number;
       carbs_g: number;
       fat_g: number;
+      fiber_g: number;
       meal_type: Meal["meal_type"];
       breakdown: string;
     }>("/meals/estimate", { method: "POST", body: { description } }),
   scanMenu: (image_base64: string, mime_type: string) =>
     request<MenuScanResult>("/meals/scan-menu", { method: "POST", body: { image_base64, mime_type } }),
+  updateMacroGoals: (body: {
+    protein_goal_g?: number; carbs_goal_g?: number; fat_goal_g?: number; fiber_goal_g?: number;
+    use_auto?: boolean;
+  }) => request<User>("/user/macro-goals", { method: "PUT", body }),
 
   // Measurements
   listMeasurements: () => request<Measurement[]>("/measurements"),
