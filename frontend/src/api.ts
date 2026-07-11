@@ -318,6 +318,10 @@ export const api = {
     date?: string;
   }) => request<Meal>("/meals", { method: "POST", body }),
   deleteMeal: (id: string) => request<{ ok: boolean }>(`/meals/${id}`, { method: "DELETE" }),
+  updateMeal: (id: string, body: {
+    name?: string; calories?: number; protein_g?: number; carbs_g?: number;
+    fat_g?: number; fiber_g?: number; meal_type?: Meal["meal_type"];
+  }) => request<Meal>(`/meals/${id}`, { method: "PUT", body }),
   toggleMealFavorite: (id: string) => request<Meal>(`/meals/${id}/favorite`, { method: "PATCH" }),
   quickAddMeals: () => request<{ favorites: Meal[]; recent: Meal[] }>("/meals/quick-add"),
   mealsHistory: () =>

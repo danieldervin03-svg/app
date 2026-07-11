@@ -24,6 +24,7 @@ export default function NutritionScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const [addOpen, setAddOpen] = useState(false);
+  const [editingMealId, setEditingMealId] = useState<string | null>(null);
   const [suggestOpen, setSuggestOpen] = useState(false);
 
   const [mealName, setMealName] = useState("");
@@ -194,6 +195,30 @@ export default function NutritionScreen() {
     }
   };
 
+  const openNewMeal = () => {
+    setEditingMealId(null);
+    setMealName(""); setMealCal(""); setMealDesc(""); setBreakdown(null);
+    setMealProtein(""); setMealCarbs(""); setMealFat(""); setMealFiber("");
+    setMealType("petit-déjeuner");
+    setError(null);
+    setAddOpen(true);
+  };
+
+  const openEditMeal = (m: Meal) => {
+    setEditingMealId(m.id);
+    setMealName(m.name);
+    setMealCal(String(m.calories));
+    setMealProtein(m.protein_g != null ? String(m.protein_g) : "");
+    setMealCarbs(m.carbs_g != null ? String(m.carbs_g) : "");
+    setMealFat(m.fat_g != null ? String(m.fat_g) : "");
+    setMealFiber(m.fiber_g != null ? String(m.fiber_g) : "");
+    setMealType(m.meal_type);
+    setMealDesc("");
+    setBreakdown(null);
+    setError(null);
+    setAddOpen(true);
+  };
+
   const submitMeal = async () => {
     setError(null);
     // If user only filled description, estimate on-the-fly
@@ -221,7 +246,7 @@ export default function NutritionScreen() {
     }
     setSaving(true);
     try {
-      await api.createMeal({
+      const payload = {
         name,
         calories,
         protein_g: mealProtein.trim() ? parseFloat(mealProtein.replace(",", ".")) : undefined,
@@ -229,10 +254,16 @@ export default function NutritionScreen() {
         fat_g: mealFat.trim() ? parseFloat(mealFat.replace(",", ".")) : undefined,
         fiber_g: mealFiber.trim() ? parseFloat(mealFiber.replace(",", ".")) : undefined,
         meal_type: mealType,
-      });
+      };
+      if (editingMealId) {
+        await api.updateMeal(editingMealId, payload);
+      } else {
+        await api.createMeal(payload);
+      }
       setMealName(""); setMealCal(""); setMealDesc(""); setBreakdown(null);
       setMealProtein(""); setMealCarbs(""); setMealFat(""); setMealFiber("");
       setMealType("petit-déjeuner");
+      setEditingMealId(null);
       setAddOpen(false);
       await load();
     } catch (e: any) {
@@ -410,7 +441,7 @@ export default function NutritionScreen() {
             </LinearGradient>
 
             <View style={styles.actionsRow}>
-              <Pressable style={styles.actionBtn} onPress={() => setAddOpen(true)} testID="nutrition-add-meal">
+              <Pressable style={styles.actionBtn} onPress={openNewMeal} testID="nutrition-add-meal">
                 <Ionicons name="add" size={18} color={colors.onBrandPrimary} />
                 <Text style={styles.actionTxt}>Ajouter un repas</Text>
               </Pressable>
@@ -462,10 +493,10 @@ export default function NutritionScreen() {
         ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
         renderItem={({ item }) => (
           <View style={styles.mealRow} testID={`meal-row-${item.id}`}>
-            <View style={styles.mealIcon}>
+            <Pressable style={styles.mealIcon} onPress={() => openEditMeal(item)} testID={`meal-edit-icon-${item.id}`}>
               <Ionicons name="restaurant-outline" size={18} color={colors.onBrandTertiary} />
-            </View>
-            <View style={{ flex: 1 }}>
+            </Pressable>
+            <Pressable style={{ flex: 1 }} onPress={() => openEditMeal(item)} testID={`meal-edit-${item.id}`}>
               <Text style={styles.mealName}>{item.name}</Text>
               <Text style={styles.mealSub}>{item.meal_type} · {item.calories} kcal</Text>
               {item.protein_g != null || item.carbs_g != null || item.fat_g != null ? (
@@ -483,7 +514,7 @@ export default function NutritionScreen() {
                   ) : null}
                 </Text>
               ) : null}
-            </View>
+            </Pressable>
             <Pressable onPress={() => toggleFavorite(item.id)} style={styles.favBtn} testID={`meal-fav-${item.id}`}>
               <Ionicons
                 name={item.is_favorite ? "star" : "star-outline"}
@@ -506,12 +537,12 @@ export default function NutritionScreen() {
       />
 
       {/* Add Meal Modal */}
-      <Modal visible={addOpen} transparent animationType="slide" onRequestClose={() => setAddOpen(false)}>
+      <Modal visible={addOpen} transparent animationType="slide" onRequestClose={() => { setAddOpen(false); setEditingMealId(null); }}>
         <View style={styles.modalBg}>
           <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ width: "100%" }}>
             <View style={styles.modalCard}>
               <View style={styles.dragHandle} />
-              <Text style={styles.modalTitle}>Nouveau repas</Text>
+              <Text style={styles.modalTitle}>{editingMealId ? "Modifier le repas" : "Nouveau repas"}</Text>
               <Text style={styles.modalSub}>
                 {`Il vous reste ${remaining} kcal à répartir sur ${mealsRemaining} repas restant${mealsRemaining > 1 ? "s" : ""} · ~${perRemainingMeal} kcal/repas`}
               </Text>
@@ -604,7 +635,7 @@ export default function NutritionScreen() {
               </View>
               {error ? <Text style={styles.err}>{error}</Text> : null}
               <Button title="Enregistrer" onPress={submitMeal} loading={saving} testID="meal-save-button" style={{ marginTop: spacing.md }} />
-              <Pressable onPress={() => { setAddOpen(false); setBreakdown(null); }} style={{ alignItems: "center", padding: spacing.md }}>
+              <Pressable onPress={() => { setAddOpen(false); setBreakdown(null); setEditingMealId(null); }} style={{ alignItems: "center", padding: spacing.md }}>
                 <Text style={{ color: colors.onSurfaceSecondary }}>Annuler</Text>
               </Pressable>
             </View>

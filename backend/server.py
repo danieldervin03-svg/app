@@ -276,6 +276,16 @@ class MealCreate(BaseModel):
     date: Optional[str] = None
 
 
+class MealUpdate(BaseModel):
+    name: Optional[str] = None
+    calories: Optional[int] = Field(default=None, ge=0, le=5000)
+    protein_g: Optional[float] = Field(default=None, ge=0, le=500)
+    carbs_g: Optional[float] = Field(default=None, ge=0, le=900)
+    fat_g: Optional[float] = Field(default=None, ge=0, le=400)
+    fiber_g: Optional[float] = Field(default=None, ge=0, le=150)
+    meal_type: Optional[Literal["petit-déjeuner", "déjeuner", "dîner", "collation"]] = None
+
+
 class MealSuggestInput(BaseModel):
     remaining_calories: int
     meal_type: Literal["petit-déjeuner", "déjeuner", "dîner", "collation"]
@@ -890,6 +900,20 @@ async def meals_history(user: dict = Depends(get_current_user)):
         d["fiber_g"] = round(d["fiber_g"], 1)
         d["calorie_goal"] = goal
     return {"days": days[:60]}
+
+
+@api.put("/meals/{meal_id}", response_model=Meal)
+async def update_meal(meal_id: str, body: MealUpdate, user: dict = Depends(get_current_user)):
+    doc = await db.meals.find_one({"id": meal_id, "user_id": user["id"]}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Repas introuvable")
+    updates = body.model_dump(exclude_unset=True)
+    if "name" in updates and updates["name"] is not None:
+        updates["name"] = updates["name"].strip()
+    if updates:
+        await db.meals.update_one({"id": meal_id}, {"$set": updates})
+    updated = await db.meals.find_one({"id": meal_id}, {"_id": 0})
+    return Meal(**updated)
 
 
 @api.delete("/meals/{meal_id}")
