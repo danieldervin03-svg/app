@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Modal, Pressable, KeyboardAvoidingView, Platform } from "react-native";
+import React, { useEffect, useState } from "react";
+import { View, Text, StyleSheet, ScrollView, Modal, Pressable, KeyboardAvoidingView, Platform, Switch } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -8,6 +8,7 @@ import { colors, font, radius, spacing } from "@/src/theme";
 import { Button, Input } from "@/src/components/ui";
 import { useAuth } from "@/src/auth";
 import { api, ProfileInput } from "@/src/api";
+import { ensureDailyReminderScheduled, cancelDailyReminder, isDailyReminderEnabled } from "@/src/notifications";
 
 const SEXES: ProfileInput["sex"][] = ["homme", "femme"];
 const ACTIVITIES: ProfileInput["activity_level"][] = ["sédentaire", "léger", "modéré", "actif", "très actif"];
@@ -34,6 +35,24 @@ export default function ProfileScreen() {
   const [macroSaving, setMacroSaving] = useState(false);
   const [macroError, setMacroError] = useState<string | null>(null);
   const isCustomMacros = user?.protein_goal_g != null || user?.carbs_goal_g != null || user?.fat_goal_g != null || user?.fiber_goal_g != null;
+
+  const [reminderOn, setReminderOn] = useState(false);
+  const [reminderBusy, setReminderBusy] = useState(false);
+  useEffect(() => {
+    isDailyReminderEnabled().then(setReminderOn);
+  }, []);
+
+  const toggleReminder = async (value: boolean) => {
+    setReminderBusy(true);
+    if (value) {
+      const ok = await ensureDailyReminderScheduled();
+      setReminderOn(ok);
+    } else {
+      await cancelDailyReminder();
+      setReminderOn(false);
+    }
+    setReminderBusy(false);
+  };
 
   // Health form
   const [sex, setSex] = useState<ProfileInput["sex"]>(user?.sex ?? "homme");
@@ -218,6 +237,25 @@ export default function ProfileScreen() {
           onPress={() => setMacrosOpen(true)}
           testID="profile-macros-row"
         />
+
+        <Text style={styles.section}>Notifications</Text>
+        <View style={styles.row} testID="profile-reminder-row">
+          <View style={styles.rowIcon}>
+            <Ionicons name="notifications-outline" size={18} color={colors.onBrandTertiary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.rowLabel}>Rappel quotidien</Text>
+            <Text style={styles.rowValue}>Chaque jour à 18h</Text>
+          </View>
+          <Switch
+            value={reminderOn}
+            onValueChange={toggleReminder}
+            disabled={reminderBusy}
+            trackColor={{ false: colors.divider, true: colors.brandSecondary }}
+            thumbColor={reminderOn ? colors.brandPrimary : "#FFF"}
+            testID="profile-reminder-switch"
+          />
+        </View>
 
         <Text style={styles.section}>Compte</Text>
         <Row icon="mail-outline" label="Email" value={user?.email} />

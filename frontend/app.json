@@ -28,6 +28,12 @@
     "plugins": [
       "expo-router",
       [
+        "expo-notifications",
+        {
+          "color": "#65A30D"
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "photosPermission": "Bodypilot a besoin d'accéder à vos photos pour scanner un menu.",

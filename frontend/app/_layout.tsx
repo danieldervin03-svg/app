@@ -10,6 +10,7 @@ import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider, useAuth } from "@/src/auth";
 import { colors, font, spacing } from "@/src/theme";
 import { AnimatedSplash } from "@/src/components/animated-splash";
+import { ensureDailyReminderScheduled } from "@/src/notifications";
 
 LogBox.ignoreAllLogs(true);
 SplashScreen.preventAutoHideAsync();
@@ -30,6 +31,10 @@ function RootGuard() {
       router.replace("/(tabs)");
     }
   }, [user, loading, segments, router]);
+
+  useEffect(() => {
+    if (user) ensureDailyReminderScheduled();
+  }, [user]);
 
   useEffect(() => {
     if (!loading) {
