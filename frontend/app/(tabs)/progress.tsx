@@ -1,11 +1,11 @@
 import React, { useCallback, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable, RefreshControl } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, RefreshControl, Modal, KeyboardAvoidingView, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { colors, font, radius, spacing } from "@/src/theme";
-import { EmptyState } from "@/src/components/ui";
+import { EmptyState, Input, Button } from "@/src/components/ui";
 import { api, CalorieRecommendation, HistoryStats, Measurement } from "@/src/api";
 import { useAuth } from "@/src/auth";
 import { BodyMeasurements } from "@/src/components/body-measurements";
@@ -48,6 +48,10 @@ export default function ProgressScreen() {
   const [reco, setReco] = useState<CalorieRecommendation | null>(null);
   const [applyingReco, setApplyingReco] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [weightOpen, setWeightOpen] = useState(false);
+  const [weightInput, setWeightInput] = useState("");
+  const [weightSaving, setWeightSaving] = useState(false);
+  const [weightError, setWeightError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -83,6 +87,33 @@ export default function ProgressScreen() {
   const delItem = async (id: string) => {
     await api.deleteMeasurement(id).catch(() => {});
     setItems((p) => p.filter((x) => x.id !== id));
+  };
+
+  const latestWeight = items.find((it) => typeof it.weight_kg === "number")?.weight_kg ?? null;
+
+  const openWeight = () => {
+    setWeightInput(latestWeight != null ? String(latestWeight) : "");
+    setWeightError(null);
+    setWeightOpen(true);
+  };
+
+  const saveWeight = async () => {
+    const n = parseFloat(weightInput.replace(",", "."));
+    if (!Number.isFinite(n) || n < 30 || n > 250) {
+      setWeightError("Entrez une valeur entre 30 et 250 kg");
+      return;
+    }
+    setWeightSaving(true);
+    setWeightError(null);
+    try {
+      await api.createMeasurement({ weight_kg: n });
+      setWeightOpen(false);
+      await load();
+    } catch (e: any) {
+      setWeightError(e.message ?? "Erreur, réessayez");
+    } finally {
+      setWeightSaving(false);
+    }
   };
 
   const sorted = [...items].reverse();
@@ -161,6 +192,20 @@ export default function ProgressScreen() {
             ))}
           </>
         ) : null}
+
+        <Text style={styles.sectionH}>Poids</Text>
+        <Pressable style={styles.weightCard} onPress={openWeight} testID="progress-weight-card">
+          <View style={styles.weightIcon}>
+            <Ionicons name="scale-outline" size={20} color={colors.onBrandPrimary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.weightValue}>
+              {latestWeight != null ? `${latestWeight} kg` : "Non renseigné"}
+            </Text>
+            <Text style={styles.weightSub}>Appuyez pour mettre à jour</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceSecondary} />
+        </Pressable>
 
         <Text style={styles.sectionH}>Mensurations du corps</Text>
         <View style={styles.bodyWrap}>
@@ -250,6 +295,30 @@ export default function ProgressScreen() {
           ))
         )}
       </ScrollView>
+
+      <Modal visible={weightOpen} transparent animationType="slide" onRequestClose={() => setWeightOpen(false)}>
+        <View style={styles.modalBg}>
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ width: "100%" }}>
+            <View style={styles.modalCard}>
+              <View style={styles.dragHandle} />
+              <Text style={styles.modalTitle}>Poids</Text>
+              <Input
+                label="Poids (kg)"
+                placeholder="Ex : 72.5"
+                keyboardType="decimal-pad"
+                value={weightInput}
+                onChangeText={setWeightInput}
+                testID="progress-weight-input"
+              />
+              {weightError ? <Text style={styles.err}>{weightError}</Text> : null}
+              <Button title="Enregistrer" onPress={saveWeight} loading={weightSaving} testID="progress-weight-save" />
+              <Pressable onPress={() => setWeightOpen(false)} style={{ alignItems: "center", padding: spacing.md }}>
+                <Text style={{ color: colors.onSurfaceSecondary }}>Annuler</Text>
+              </Pressable>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
     </SafeAreaView>
     </LinearGradient>
   );
@@ -357,4 +426,16 @@ const styles = StyleSheet.create({
   },
   dragHandle: { width: 40, height: 4, backgroundColor: colors.borderStrong, borderRadius: 2, alignSelf: "center", marginBottom: spacing.md },
   modalTitle: { fontSize: font.xl, color: colors.onSurface, marginBottom: spacing.md, fontWeight: "500" },
+  err: { color: colors.error, textAlign: "center", marginBottom: spacing.sm },
+  weightCard: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg,
+    marginBottom: spacing.lg, borderWidth: 1, borderColor: colors.divider,
+  },
+  weightIcon: {
+    width: 40, height: 40, borderRadius: 20, backgroundColor: colors.brandPrimary,
+    alignItems: "center", justifyContent: "center",
+  },
+  weightValue: { fontSize: font.lg, color: colors.onSurface, fontWeight: "600" },
+  weightSub: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginTop: 2 },
 });
