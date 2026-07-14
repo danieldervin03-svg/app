@@ -510,6 +510,7 @@ async def ask_llm_json(
     session_id: str,
     image_bytes: Optional[bytes] = None,
     image_mime: str = "image/jpeg",
+    max_tokens: int = 1500,
 ) -> dict:
     """Ask Claude for a JSON response. Robust to code fences. Optionally attach an image (vision)."""
     try:
@@ -528,11 +529,13 @@ async def ask_llm_json(
             model = ANTHROPIC_MODEL_TEXT
         response = await anthropic_client.messages.create(
             model=model,
-            max_tokens=1500,
+            max_tokens=max_tokens,
             system=system,
             messages=[{"role": "user", "content": content}],
         )
         reply = "".join(b.text for b in response.content if getattr(b, "type", None) == "text")
+        if response.stop_reason == "max_tokens":
+            logger.warning("Claude response truncated by max_tokens (%s tokens, session=%s)", max_tokens, session_id)
     except Exception as e:
         logger.error("Claude call error (%s): %s", session_id, e)
         raise HTTPException(502, "Réponse IA indisponible, veuillez réessayer")
@@ -633,7 +636,7 @@ async def generate_workout(body: WorkoutGenerateInput, user: dict = Depends(get_
         "Inclus 5 à 8 exercices adaptés. Reps peut être un nombre ou une durée. "
         "Notes = conseil bref sur la forme."
     )
-    data = await ask_llm_json(system, prompt, f"gen-workout-{user['id']}-{uuid.uuid4()}")
+    data = await ask_llm_json(system, prompt, f"gen-workout-{user['id']}-{uuid.uuid4()}", max_tokens=2500)
 
     exercises = []
     for ex in data.get("exercises", []):
@@ -700,7 +703,7 @@ async def generate_program(body: ProgramGenerateInput, user: dict = Depends(get_
         "Pour target_weight_kg indique un poids de départ raisonnable pour un pratiquant "
         f"{body.level} (peut être null si poids du corps)."
     )
-    data = await ask_llm_json(system, prompt, f"gen-program-{user['id']}-{uuid.uuid4()}")
+    data = await ask_llm_json(system, prompt, f"gen-program-{user['id']}-{uuid.uuid4()}", max_tokens=4096)
 
     program_id = new_id()
     sessions = data.get("sessions") or []
@@ -949,7 +952,7 @@ async def suggest_meals(body: MealSuggestInput, user: dict = Depends(get_current
         '{"suggestions": [{"name": "string", "calories": int, "protein_g": number, "carbs_g": number, '
         '"fat_g": number, "fiber_g": number, "ingredients": ["string", ...], "description": "string court"}]}'
     )
-    data = await ask_llm_json(system, prompt, f"gen-meal-{user['id']}-{uuid.uuid4()}")
+    data = await ask_llm_json(system, prompt, f"gen-meal-{user['id']}-{uuid.uuid4()}", max_tokens=2000)
     suggestions = data.get("suggestions", [])[:3]
     cleaned = []
     for s in suggestions:
@@ -989,7 +992,7 @@ async def estimate_meal(body: MealEstimateInput, user: dict = Depends(get_curren
         '"meal_type": "petit-déjeuner|déjeuner|dîner|collation", '
         '"breakdown": "string très court expliquant l\'estimation"}'
     )
-    data = await ask_llm_json(system, prompt, f"est-meal-{user['id']}-{uuid.uuid4()}")
+    data = await ask_llm_json(system, prompt, f"est-meal-{user['id']}-{uuid.uuid4()}", max_tokens=1500)
     mt = str(data.get("meal_type", "déjeuner")).lower()
     if mt not in ("petit-déjeuner", "déjeuner", "dîner", "collation"):
         mt = "déjeuner"
@@ -1040,7 +1043,7 @@ async def scan_food(body: MenuScanInput, user: dict = Depends(get_current_user))
     )
     data = await ask_llm_json(
         system, prompt, f"scan-food-{user['id']}-{uuid.uuid4()}",
-        image_bytes=image_bytes, image_mime=body.mime_type,
+        image_bytes=image_bytes, image_mime=body.mime_type, max_tokens=1500,
     )
     mt = str(data.get("meal_type", "collation")).lower()
     if mt not in ("petit-déjeuner", "déjeuner", "dîner", "collation"):
@@ -1106,7 +1109,7 @@ async def scan_menu(body: MenuScanInput, user: dict = Depends(get_current_user))
     )
     data = await ask_llm_json(
         system, prompt, f"scan-menu-{user['id']}-{uuid.uuid4()}",
-        image_bytes=image_bytes, image_mime=body.mime_type,
+        image_bytes=image_bytes, image_mime=body.mime_type, max_tokens=1500,
     )
     return {
         "menu_lisible": bool(data.get("menu_lisible", True)),
