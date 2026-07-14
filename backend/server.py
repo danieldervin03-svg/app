@@ -769,7 +769,7 @@ async def get_exercise_gif(name: str, user: dict = Depends(get_current_user)):
 
     if not WORKOUTX_API_KEY:
         logger.warning("WORKOUTX_API_KEY not set — skipping exercise GIF lookup")
-        await db.exercise_gifs.insert_one(result)
+        await db.exercise_gifs.insert_one(dict(result))
         return result
 
     try:
@@ -790,7 +790,7 @@ async def get_exercise_gif(name: str, user: dict = Depends(get_current_user)):
         )
         name_en = str(translated.get("name_en", "")).strip()
         if not name_en:
-            await db.exercise_gifs.insert_one(result)
+            await db.exercise_gifs.insert_one(dict(result))
             return result
         result["name_en"] = name_en
 
@@ -814,7 +814,7 @@ async def get_exercise_gif(name: str, user: dict = Depends(get_current_user)):
     except Exception as e:
         logger.error("Exercise GIF lookup error for '%s': %s", name, e)
 
-    await db.exercise_gifs.insert_one(result)
+    await db.exercise_gifs.insert_one(dict(result))
     return result
 
 
