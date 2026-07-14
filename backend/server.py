@@ -18,6 +18,7 @@ import bcrypt
 import jwt
 
 from anthropic import AsyncAnthropic
+import httpx
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -31,6 +32,9 @@ ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 ANTHROPIC_MODEL_TEXT = os.environ.get("ANTHROPIC_MODEL_TEXT", "claude-haiku-4-5-20251001")
 ANTHROPIC_MODEL_VISION = os.environ.get("ANTHROPIC_MODEL_VISION", "claude-sonnet-5")
 anthropic_client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+
+WORKOUTX_API_KEY = os.environ.get("WORKOUTX_API_KEY", "")
+WORKOUTX_BASE = "https://api.workoutxapp.com"
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
@@ -738,6 +742,80 @@ async def generate_program(body: ProgramGenerateInput, user: dict = Depends(get_
         workouts.append(wk)
 
     return workouts
+
+
+# ============================================================================
+# Exercise demonstration GIFs (WorkoutX, cached globally per exercise name)
+# ============================================================================
+
+def _normalize_exercise_key(name: str) -> str:
+    return " ".join(name.strip().lower().split())
+
+
+@api.get("/exercises/gif")
+async def get_exercise_gif(name: str, user: dict = Depends(get_current_user)):
+    """Return a demonstration GIF for a (French) exercise name, translating and
+    looking it up against the WorkoutX exercise database on first request, then
+    caching the result globally so future lookups for the same exercise are instant."""
+    key = _normalize_exercise_key(name)
+    if not key:
+        raise HTTPException(400, "Nom d'exercice manquant")
+
+    cached = await db.exercise_gifs.find_one({"key": key}, {"_id": 0})
+    if cached:
+        return cached
+
+    result = {"key": key, "name_fr": name, "found": False, "gif_url": None, "name_en": None}
+
+    if not WORKOUTX_API_KEY:
+        logger.warning("WORKOUTX_API_KEY not set — skipping exercise GIF lookup")
+        await db.exercise_gifs.insert_one(result)
+        return result
+
+    try:
+        # 1. Translate/normalize the French exercise name to a standard English search term
+        translate_system = (
+            "Tu traduis des noms d'exercices de musculation du français vers l'anglais, "
+            "en utilisant le nom standard le plus courant (celui qu'on trouverait dans une "
+            "base de données d'exercices anglophone). Réponds STRICTEMENT en JSON valide, "
+            "sans texte hors JSON."
+        )
+        translate_prompt = (
+            f'Nom de l\'exercice en français : "{name}"\n\n'
+            'Réponds avec ce schéma JSON exact: {"name_en": "string, nom standard en anglais"}'
+        )
+        translated = await ask_llm_json(
+            translate_system, translate_prompt, f"translate-ex-{user['id']}-{uuid.uuid4()}",
+            max_tokens=200,
+        )
+        name_en = str(translated.get("name_en", "")).strip()
+        if not name_en:
+            await db.exercise_gifs.insert_one(result)
+            return result
+        result["name_en"] = name_en
+
+        # 2. Search WorkoutX for a matching exercise
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                f"{WORKOUTX_BASE}/v1/exercises/name/{name_en}",
+                headers={"X-WorkoutX-Key": WORKOUTX_API_KEY},
+            )
+        if resp.status_code == 200:
+            payload = resp.json()
+            items = payload.get("data") if isinstance(payload, dict) else payload
+            if items:
+                best = items[0]
+                result["found"] = True
+                result["gif_url"] = best.get("gifUrl")
+                result["body_part"] = best.get("bodyPart")
+                result["target"] = best.get("target")
+        else:
+            logger.warning("WorkoutX lookup failed (%s): %s", resp.status_code, resp.text[:200])
+    except Exception as e:
+        logger.error("Exercise GIF lookup error for '%s': %s", name, e)
+
+    await db.exercise_gifs.insert_one(result)
+    return result
 
 
 # ============================================================================

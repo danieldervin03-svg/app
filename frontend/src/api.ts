@@ -351,6 +351,10 @@ export const api = {
     request<MenuScanResult>("/meals/scan-menu", { method: "POST", body: { image_base64, mime_type } }),
   scanFood: (image_base64: string, mime_type: string) =>
     request<FoodScanResult>("/meals/scan-food", { method: "POST", body: { image_base64, mime_type } }),
+  getExerciseGif: (name: string) =>
+    request<{ found: boolean; gif_url: string | null; name_en: string | null }>(
+      `/exercises/gif?name=${encodeURIComponent(name)}`,
+    ),
   updateMacroGoals: (body: {
     protein_goal_g?: number | null; carbs_goal_g?: number | null; fat_goal_g?: number | null; fiber_goal_g?: number | null;
     use_auto?: boolean;

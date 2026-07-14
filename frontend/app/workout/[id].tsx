@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Pressable, Modal, KeyboardAvoidingV
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
 import { colors, font, radius, spacing } from "@/src/theme";
 import { Button, Input } from "@/src/components/ui";
 import { CoachChat } from "@/src/components/coach-chat";
@@ -27,6 +28,12 @@ export default function WorkoutDetail() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyExName, setHistoryExName] = useState<string>("");
   const [historyPoints, setHistoryPoints] = useState<ExerciseHistoryPoint[]>([]);
+
+  const [gifOpen, setGifOpen] = useState(false);
+  const [gifExName, setGifExName] = useState("");
+  const [gifLoading, setGifLoading] = useState(false);
+  const [gifUrl, setGifUrl] = useState<string | null>(null);
+  const [gifFound, setGifFound] = useState(true);
 
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState<Exercise | null>(null);
@@ -150,6 +157,23 @@ export default function WorkoutDetail() {
       setHistoryPoints(res.points);
     } catch {
       setHistoryPoints([]);
+    }
+  };
+
+  const openGif = async (exName: string) => {
+    setGifExName(exName);
+    setGifOpen(true);
+    setGifLoading(true);
+    setGifUrl(null);
+    setGifFound(true);
+    try {
+      const res = await api.getExerciseGif(exName);
+      setGifUrl(res.gif_url);
+      setGifFound(res.found);
+    } catch {
+      setGifFound(false);
+    } finally {
+      setGifLoading(false);
     }
   };
 
@@ -278,6 +302,9 @@ export default function WorkoutDetail() {
                 </Text>
                 {ex.notes ? <Text style={styles.exNote}>{ex.notes}</Text> : null}
               </View>
+              <Pressable onPress={() => openGif(ex.name)} style={styles.miniBtn} testID={`exercise-gif-${ex.id}`}>
+                <Ionicons name="play-circle-outline" size={20} color={colors.brandPrimary} />
+              </Pressable>
               <Pressable onPress={() => openEdit(ex)} style={styles.miniBtn} testID={`exercise-edit-${ex.id}`}>
                 <Ionicons name="create-outline" size={18} color={colors.brandPrimary} />
               </Pressable>
@@ -475,6 +502,42 @@ export default function WorkoutDetail() {
           </ScrollView>
         </SafeAreaView>
       </Modal>
+
+      <Modal visible={gifOpen} transparent animationType="slide" onRequestClose={() => setGifOpen(false)}>
+        <View style={styles.modalBg}>
+          <View style={styles.modalCard}>
+            <View style={styles.drag} />
+            <Text style={styles.modalTitle} numberOfLines={1}>{gifExName}</Text>
+            {gifLoading ? (
+              <View style={{ alignItems: "center", padding: spacing.xl }}>
+                <ActivityIndicator color={colors.brandPrimary} />
+                <Text style={{ color: colors.onSurfaceSecondary, marginTop: spacing.sm }}>
+                  Recherche d'une démonstration…
+                </Text>
+              </View>
+            ) : gifUrl ? (
+              <Image
+                source={{ uri: gifUrl }}
+                style={styles.gifImage}
+                contentFit="contain"
+                autoplay
+              />
+            ) : (
+              <View style={{ alignItems: "center", padding: spacing.xl }}>
+                <Ionicons name="film-outline" size={32} color={colors.onSurfaceTertiary} />
+                <Text style={{ color: colors.onSurfaceSecondary, marginTop: spacing.sm, textAlign: "center" }}>
+                  {gifFound
+                    ? "Aucune démonstration disponible pour cet exercice."
+                    : "Impossible de charger la démonstration pour le moment."}
+                </Text>
+              </View>
+            )}
+            <Pressable onPress={() => setGifOpen(false)} style={{ alignItems: "center", padding: spacing.md }}>
+              <Text style={{ color: colors.onSurfaceSecondary }}>Fermer</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -560,4 +623,5 @@ const styles = StyleSheet.create({
   modalCard: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: spacing.xl, paddingBottom: spacing.xxxl },
   drag: { width: 40, height: 4, backgroundColor: colors.borderStrong, borderRadius: 2, alignSelf: "center", marginBottom: spacing.md },
   modalTitle: { fontSize: font.xl, color: colors.onSurface, marginBottom: spacing.md, fontWeight: "500" },
+  gifImage: { width: "100%", height: 260, borderRadius: radius.md, backgroundColor: colors.surfaceSecondary },
 });
