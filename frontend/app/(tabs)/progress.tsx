@@ -274,33 +274,66 @@ export default function ProgressScreen() {
         {sorted.length === 0 ? (
           <EmptyState title="Aucune mesure enregistrée" subtitle="Ajoutez votre premier suivi." testID="progress-empty" />
         ) : (
-          sorted.map((m) => (
-            <View key={m.id} style={styles.row} testID={`measurement-${m.id}`}>
-              <View style={styles.rowIcon}>
-                <Ionicons name="scale-outline" size={18} color={colors.onBrandTertiary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.rowTitle}>
-                  Mensuration du {new Date(m.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
-                </Text>
-                <Text style={styles.rowSub}>
-                  {[
-                    m.weight_kg != null ? `${m.weight_kg} kg` : null,
-                    m.chest_cm != null ? `Torse ${m.chest_cm}cm` : null,
-                    m.waist_cm != null ? `Taille ${m.waist_cm}cm` : null,
-                    m.belly_cm != null ? `Ventre ${m.belly_cm}cm` : null,
-                    m.hips_cm != null ? `Hanches ${m.hips_cm}cm` : null,
-                    m.arm_cm != null ? `Bras ${m.arm_cm}cm` : null,
-                    m.thigh_cm != null ? `Cuisse ${m.thigh_cm}cm` : null,
-                  ].filter(Boolean).join(" · ") || "—"}
-                </Text>
+          sorted.map((m, idx) => {
+            const fields: { key: keyof Measurement; label: string; unit: string }[] = [
+              { key: "weight_kg", label: "Poids", unit: "kg" },
+              { key: "chest_cm", label: "Torse", unit: "cm" },
+              { key: "waist_cm", label: "Taille", unit: "cm" },
+              { key: "belly_cm", label: "Ventre", unit: "cm" },
+              { key: "hips_cm", label: "Hanches", unit: "cm" },
+              { key: "arm_cm", label: "Bras", unit: "cm" },
+              { key: "thigh_cm", label: "Cuisse", unit: "cm" },
+            ];
+            const present = fields.filter((f) => m[f.key] != null);
+            const findPrevious = (key: keyof Measurement): number | null => {
+              for (let j = idx + 1; j < sorted.length; j++) {
+                const v = sorted[j][key];
+                if (v != null) return v as number;
+              }
+              return null;
+            };
+            const dateLabel = new Date(m.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+            return (
+              <View key={m.id} style={styles.histCard} testID={`measurement-${m.id}`}>
+                <View style={styles.histCardHeader}>
+                  <Text style={styles.histCardDate}>{dateLabel}</Text>
+                  <Pressable onPress={() => delItem(m.id)} style={{ padding: spacing.xs }} testID={`measurement-delete-${m.id}`}>
+                    <Ionicons name="trash-outline" size={17} color={colors.error} />
+                  </Pressable>
+                </View>
+                {present.length === 0 ? (
+                  <Text style={styles.rowSub}>—</Text>
+                ) : (
+                  <View style={styles.histChipsWrap}>
+                    {present.map((f) => {
+                      const val = m[f.key] as number;
+                      const prev = findPrevious(f.key);
+                      const delta = prev != null ? Math.round((val - prev) * 10) / 10 : null;
+                      return (
+                        <View key={String(f.key)} style={styles.histChip}>
+                          <Text style={styles.histChipLabel}>{f.label}</Text>
+                          <Text style={styles.histChipVal}>{val} {f.unit}</Text>
+                          {delta != null && delta !== 0 ? (
+                            <View style={styles.histChipDelta}>
+                              <Ionicons
+                                name={delta > 0 ? "arrow-up" : "arrow-down"}
+                                size={10}
+                                color={delta > 0 ? "#DC2626" : "#65A30D"}
+                              />
+                              <Text style={[styles.histChipDeltaTxt, { color: delta > 0 ? "#DC2626" : "#65A30D" }]}>
+                                {Math.abs(delta)}
+                              </Text>
+                            </View>
+                          ) : null}
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
                 {m.note ? <Text style={styles.rowNote}>{m.note}</Text> : null}
               </View>
-              <Pressable onPress={() => delItem(m.id)} style={{ padding: spacing.sm }} testID={`measurement-delete-${m.id}`}>
-                <Ionicons name="trash-outline" size={18} color={colors.error} />
-              </Pressable>
-            </View>
-          ))
+            );
+          })
         )}
       </ScrollView>
 
@@ -402,6 +435,20 @@ const styles = StyleSheet.create({
   rowTitle: { fontSize: font.base, color: colors.onSurface, fontWeight: "500" },
   rowSub: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginTop: 2 },
   rowNote: { fontSize: font.sm, color: colors.onSurfaceTertiary, marginTop: 4, fontStyle: "italic" },
+  histCard: {
+    backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm,
+  },
+  histCardHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.sm },
+  histCardDate: { fontSize: font.base, color: colors.onSurface, fontWeight: "500", textTransform: "capitalize" },
+  histChipsWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  histChip: {
+    backgroundColor: colors.surface, borderRadius: radius.md, paddingHorizontal: spacing.sm, paddingVertical: 6,
+    borderWidth: 1, borderColor: colors.divider,
+  },
+  histChipLabel: { fontSize: 10, color: colors.onSurfaceSecondary, textTransform: "uppercase", letterSpacing: 0.4 },
+  histChipVal: { fontSize: font.sm, color: colors.onSurface, fontWeight: "600" },
+  histChipDelta: { flexDirection: "row", alignItems: "center", gap: 2, marginTop: 2 },
+  histChipDeltaTxt: { fontSize: 10, fontWeight: "600" },
   modalBg: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-end" },
   modalCard: {
     backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,

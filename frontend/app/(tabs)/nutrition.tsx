@@ -412,17 +412,20 @@ export default function NutritionScreen() {
                   { key: "fiber", label: "Fibres", icon: "nutrition" as const, color: "#34D399", consumed: summary?.fiber_consumed_g ?? 0, goal: summary?.fiber_goal_g ?? 0 },
                 ].map((m) => {
                   const pct = m.goal > 0 ? Math.min(1, m.consumed / m.goal) : 0;
+                  const over = m.goal > 0 && m.consumed > m.goal;
                   return (
                     <View key={m.key} style={styles.macroItem}>
                       <View style={styles.macroHeader}>
                         <View style={[styles.macroIconDot, { backgroundColor: m.color }]}>
                           <Ionicons name={m.icon} size={11} color="#FFF" />
                         </View>
-                        <Text style={styles.macroValue}>{Math.round(m.consumed)}g</Text>
+                        <Text style={[styles.macroValue, over && { color: "#FEE2E2" }]}>
+                          {Math.round(m.consumed)}g
+                        </Text>
                       </View>
                       <Text style={styles.macroLabel}>{m.label}</Text>
                       <View style={styles.macroBarTrack}>
-                        <View style={[styles.macroBarFill, { width: `${pct * 100}%`, backgroundColor: m.color }]} />
+                        <View style={[styles.macroBarFill, { width: `${pct * 100}%`, backgroundColor: over ? "#DC2626" : m.color }]} />
                       </View>
                     </View>
                   );

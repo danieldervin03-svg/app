@@ -98,7 +98,9 @@ export default function HomeScreen() {
                       <View style={[styles.macroIconDot, { backgroundColor: m.color }]}>
                         <Ionicons name={m.icon} size={11} color="#FFF" />
                       </View>
-                      <Text style={styles.macroValue}>{Math.max(0, Math.round(r))}g</Text>
+                      <Text style={[styles.macroValue, r < 0 && { color: "#FEE2E2" }]}>
+                        {r < 0 ? `+${Math.round(-r)}g` : `${Math.round(r)}g`}
+                      </Text>
                     </View>
                     <Text style={styles.macroLabel}>{m.label}</Text>
                     <View style={styles.macroBarTrack}>

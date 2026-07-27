@@ -7,6 +7,7 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
 } from "react-native";
 import { Image } from "expo-image";
 import { colors, font, radius, spacing } from "@/src/theme";
@@ -74,6 +75,11 @@ export function BodyMeasurements({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [quickValues, setQuickValues] = useState<Record<string, string>>({});
+  const [quickSaving, setQuickSaving] = useState(false);
+  const [quickError, setQuickError] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     try {
       const l = await api.latestMeasurements();
@@ -90,6 +96,48 @@ export function BodyMeasurements({
     const current = latest?.[z.key];
     setValue(current ? String(current.value) : "");
     setError(null);
+  };
+
+  const openQuick = () => {
+    const init: Record<string, string> = {};
+    ZONES.forEach((z) => {
+      const rec = latest?.[z.key];
+      init[z.key] = rec ? String(rec.value) : "";
+    });
+    setQuickValues(init);
+    setQuickError(null);
+    setQuickOpen(true);
+  };
+
+  const saveQuick = async () => {
+    setQuickError(null);
+    const body: Record<string, number> = {};
+    for (const z of ZONES) {
+      const raw = (quickValues[z.key] ?? "").trim();
+      if (!raw) continue;
+      const n = parseFloat(raw.replace(",", "."));
+      const { min, max } = RANGE[z.key];
+      if (!Number.isFinite(n) || n < min || n > max) {
+        setQuickError(`${LABEL_FR[z.key]} : entrez une valeur entre ${min} et ${max} ${z.unit}`);
+        return;
+      }
+      body[z.key] = n;
+    }
+    if (Object.keys(body).length === 0) {
+      setQuickError("Renseignez au moins une mesure");
+      return;
+    }
+    setQuickSaving(true);
+    try {
+      await api.createMeasurement(body as any);
+      await load();
+      setQuickOpen(false);
+      onSaved?.();
+    } catch (e: any) {
+      setQuickError(e.message ?? "Erreur");
+    } finally {
+      setQuickSaving(false);
+    }
   };
 
   const saveZone = async () => {
@@ -152,12 +200,18 @@ export function BodyMeasurements({
                     <View style={[styles.dot, has && styles.dotFilled]} />
                     <View style={[styles.badge, styles.badgeRight]}>
                       <Text style={styles.badgeLabel}>{z.label}</Text>
+                      <Text style={[styles.badgeVal, !val && styles.badgeValEmpty]}>
+                        {val ? `${val} ${z.unit}` : "—"}
+                      </Text>
                     </View>
                   </>
                 ) : (
                   <>
                     <View style={[styles.badge, styles.badgeLeft]}>
                       <Text style={styles.badgeLabel}>{z.label}</Text>
+                      <Text style={[styles.badgeVal, !val && styles.badgeValEmpty]}>
+                        {val ? `${val} ${z.unit}` : "—"}
+                      </Text>
                     </View>
                     <View style={[styles.dot, has && styles.dotFilled]} />
                     <View style={styles.connector} />
@@ -170,6 +224,9 @@ export function BodyMeasurements({
       </View>
 
       <Text style={styles.hint}>Appuyez sur une zone pour ajouter une mesure</Text>
+      <Pressable onPress={openQuick} style={styles.quickBtn} testID="body-quick-open">
+        <Text style={styles.quickBtnTxt}>Saisie rapide (toutes les mesures)</Text>
+      </Pressable>
 
       <Modal
         visible={!!selected}
@@ -202,6 +259,40 @@ export function BodyMeasurements({
               {error ? <Text style={styles.err}>{error}</Text> : null}
               <Button title="Enregistrer" onPress={saveZone} loading={saving} testID={`body-save-${selected?.key ?? "x"}`} />
               <Pressable onPress={() => setSelected(null)} style={{ alignItems: "center", padding: spacing.md }}>
+                <Text style={{ color: colors.onSurfaceSecondary }}>Annuler</Text>
+              </Pressable>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={quickOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setQuickOpen(false)}
+      >
+        <View style={styles.modalBg}>
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ width: "100%", maxHeight: "88%" }}>
+            <View style={styles.modalCard}>
+              <View style={styles.drag} />
+              <Text style={styles.modalTitle}>Saisie rapide</Text>
+              <Text style={styles.modalSub}>Renseignez uniquement ce que vous voulez mettre à jour.</Text>
+              <ScrollView>
+                {ZONES.map((z) => (
+                  <Input
+                    key={z.key}
+                    label={`${z.label} (${z.unit})`}
+                    keyboardType="decimal-pad"
+                    value={quickValues[z.key] ?? ""}
+                    onChangeText={(t) => setQuickValues((prev) => ({ ...prev, [z.key]: t }))}
+                    testID={`body-quick-input-${z.key}`}
+                  />
+                ))}
+              </ScrollView>
+              {quickError ? <Text style={styles.err}>{quickError}</Text> : null}
+              <Button title="Enregistrer tout" onPress={saveQuick} loading={quickSaving} testID="body-quick-save" />
+              <Pressable onPress={() => setQuickOpen(false)} style={{ alignItems: "center", padding: spacing.md }}>
                 <Text style={{ color: colors.onSurfaceSecondary }}>Annuler</Text>
               </Pressable>
             </View>
@@ -278,6 +369,14 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     textAlign: "center",
   },
+  quickBtn: {
+    marginTop: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
+    backgroundColor: colors.brandPrimary,
+  },
+  quickBtnTxt: { color: colors.onBrandPrimary, fontSize: font.sm, fontWeight: "500" },
   modalBg: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-end" },
   modalCard: {
     backgroundColor: colors.surface,
