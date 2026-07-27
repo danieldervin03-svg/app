@@ -307,6 +307,13 @@ export const api = {
   }) => request<Workout[]>("/workouts/generate-program", { method: "POST", body }),
   logSession: (id: string, entries: LogEntry[]) =>
     request<{ workout: Workout }>(`/workouts/${id}/log`, { method: "POST", body: { entries } }),
+  logExercise: (workoutId: string, exerciseId: string, body: {
+    difficulty: "facile" | "reussi" | "echec";
+    weight_kg?: number | null;
+    reps_done?: number | null;
+  }) => request<{ workout: Workout }>(`/workouts/${workoutId}/exercises/${exerciseId}/log`, { method: "POST", body }),
+  completeWorkout: (id: string) =>
+    request<{ workout: Workout }>(`/workouts/${id}/complete`, { method: "POST" }),
 
   // Meals
   listMeals: (date?: string) =>

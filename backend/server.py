@@ -254,6 +254,12 @@ class SessionLogInput(BaseModel):
     entries: List[LogEntry]
 
 
+class ExerciseLogInput(BaseModel):
+    difficulty: Literal["facile", "reussi", "echec"]
+    weight_kg: Optional[float] = None
+    reps_done: Optional[int] = None
+
+
 class Meal(BaseModel):
     id: str = Field(default_factory=new_id)
     user_id: str
@@ -886,7 +892,70 @@ async def log_session(workout_id: str, body: SessionLogInput, user: dict = Depen
     return {"workout": Workout(**updated).model_dump()}
 
 
-@api.get("/workouts/{workout_id}/logs")
+@api.post("/workouts/{workout_id}/exercises/{exercise_id}/log")
+async def log_single_exercise(
+    workout_id: str, exercise_id: str, body: ExerciseLogInput, user: dict = Depends(get_current_user)
+):
+    """Validate one exercise immediately (right when it's finished), instead of
+    waiting for a batch log at the end of the session."""
+    doc = await db.workouts.find_one({"id": workout_id, "user_id": user["id"]}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Entraînement introuvable")
+
+    exercises = doc.get("exercises", [])
+    ex = next((e for e in exercises if e["id"] == exercise_id), None)
+    if not ex:
+        raise HTTPException(404, "Exercice introuvable")
+
+    ex["last_difficulty"] = body.difficulty
+    if body.weight_kg is not None:
+        ex["last_weight_kg"] = body.weight_kg
+    if body.reps_done is not None:
+        ex["last_reps_done"] = body.reps_done
+
+    await db.workouts.update_one({"id": workout_id}, {"$set": {"exercises": exercises}})
+
+    # Upsert into today's session log for this workout, so exercise history stays accurate
+    # even though exercises are now validated one at a time instead of all at once.
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    existing_log = await db.session_logs.find_one(
+        {"user_id": user["id"], "workout_id": workout_id, "performed_at": {"$regex": f"^{today_str}"}},
+        {"_id": 0},
+    )
+    entry = {
+        "exercise_id": exercise_id,
+        "difficulty": body.difficulty,
+        "weight_kg": body.weight_kg,
+        "reps_done": body.reps_done,
+    }
+    if existing_log:
+        entries = [e for e in existing_log.get("entries", []) if e.get("exercise_id") != exercise_id]
+        entries.append(entry)
+        await db.session_logs.update_one({"id": existing_log["id"]}, {"$set": {"entries": entries}})
+    else:
+        log_doc = {
+            "id": new_id(),
+            "user_id": user["id"],
+            "workout_id": workout_id,
+            "entries": [entry],
+            "performed_at": now_utc(),
+        }
+        await db.session_logs.insert_one(log_doc)
+
+    updated = await db.workouts.find_one({"id": workout_id}, {"_id": 0})
+    return {"workout": Workout(**updated).model_dump()}
+
+
+@api.post("/workouts/{workout_id}/complete")
+async def complete_workout(workout_id: str, user: dict = Depends(get_current_user)):
+    """Mark the session itself as done. No exercise data required — exercises are
+    now validated individually as they're finished, via /exercises/{id}/log."""
+    doc = await db.workouts.find_one({"id": workout_id, "user_id": user["id"]}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Entraînement introuvable")
+    await db.workouts.update_one({"id": workout_id}, {"$set": {"performed_at": now_utc()}})
+    updated = await db.workouts.find_one({"id": workout_id}, {"_id": 0})
+    return {"workout": Workout(**updated).model_dump()}
 async def workout_logs(workout_id: str, user: dict = Depends(get_current_user)):
     items = await db.session_logs.find(
         {"user_id": user["id"], "workout_id": workout_id}, {"_id": 0}

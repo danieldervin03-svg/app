@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
+import Svg, { Path, Circle } from "react-native-svg";
 import { colors, font, radius, spacing } from "@/src/theme";
 import { Button, Input } from "@/src/components/ui";
 import { CoachChat } from "@/src/components/coach-chat";
@@ -15,6 +16,35 @@ const DIFFICULTIES: { key: Difficulty; label: string; color: string; icon: any }
   { key: "reussi", label: "Réussi", color: "#0891B2", icon: "checkmark" },
   { key: "echec", label: "Échec", color: "#DC2626", icon: "arrow-down" },
 ];
+
+type ChartPoint = { x: number; y: number };
+
+function smoothPath(points: ChartPoint[]): string {
+  if (points.length === 0) return "";
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+  let d = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i];
+    const p1 = points[i + 1];
+    const midX = (p0.x + p1.x) / 2;
+    d += ` C ${midX} ${p0.y}, ${midX} ${p1.y}, ${p1.x} ${p1.y}`;
+  }
+  return d;
+}
+
+function buildSeries(values: number[], width: number, height: number, padY = 16): ChartPoint[] {
+  if (values.length === 0) return [];
+  if (values.length === 1) return [{ x: width / 2, y: height / 2 }];
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  const range = Math.max(0.5, max - min);
+  const stepX = width / (values.length - 1);
+  return values.map((v, i) => {
+    const norm = (v - min) / range; // 0..1
+    const y = height - padY - norm * (height - padY * 2);
+    return { x: i * stepX, y };
+  });
+}
 
 export default function WorkoutDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -36,6 +66,13 @@ export default function WorkoutDetail() {
   const [gifFound, setGifFound] = useState(true);
   const [gifLoadError, setGifLoadError] = useState(false);
   const [gifAuthHeader, setGifAuthHeader] = useState<{ Authorization: string } | null>(null);
+
+  const [validatingExId, setValidatingExId] = useState<string | null>(null);
+  const [draftDifficulty, setDraftDifficulty] = useState<Difficulty>("reussi");
+  const [draftWeight, setDraftWeight] = useState<number | null>(null);
+  const [draftReps, setDraftReps] = useState<number | null>(null);
+  const [validateSaving, setValidateSaving] = useState(false);
+  const [completing, setCompleting] = useState(false);
 
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState<Exercise | null>(null);
@@ -136,6 +173,58 @@ export default function WorkoutDetail() {
       ...prev,
       [exId]: { ...prev[exId], weight_kg: Number.isFinite(n) ? n : null },
     }));
+  };
+
+  const parseFirstInt = (s: string): number | null => {
+    const m = s.match(/\d+/);
+    return m ? parseInt(m[0], 10) : null;
+  };
+
+  const openValidate = (ex: Exercise) => {
+    setValidatingExId(ex.id);
+    setDraftDifficulty((ex.last_difficulty as Difficulty) ?? "reussi");
+    setDraftWeight(ex.last_weight_kg ?? ex.target_weight_kg ?? null);
+    setDraftReps(ex.last_reps_done ?? parseFirstInt(ex.reps));
+  };
+
+  const cancelValidate = () => setValidatingExId(null);
+
+  const bumpWeight = (delta: number) => setDraftWeight((prev) => Math.max(0, (prev ?? 0) + delta));
+  const bumpReps = (delta: number) => setDraftReps((prev) => Math.max(0, (prev ?? 0) + delta));
+
+  const confirmValidate = async () => {
+    if (!workout || !validatingExId) return;
+    setValidateSaving(true);
+    try {
+      const res = await api.logExercise(workout.id, validatingExId, {
+        difficulty: draftDifficulty,
+        weight_kg: draftWeight,
+        reps_done: draftReps,
+      });
+      setWorkout(res.workout);
+      setValidatingExId(null);
+    } catch {} finally {
+      setValidateSaving(false);
+    }
+  };
+
+  const completeSession = () => {
+    if (!workout) return;
+    Alert.alert("Terminer la séance", "Marquer cette séance comme terminée ?", [
+      { text: "Annuler", style: "cancel" },
+      {
+        text: "Terminer", style: "default",
+        onPress: async () => {
+          setCompleting(true);
+          try {
+            const res = await api.completeWorkout(workout.id);
+            setWorkout(res.workout);
+          } catch {} finally {
+            setCompleting(false);
+          }
+        },
+      },
+    ]);
   };
 
   const submitLog = async () => {
@@ -255,7 +344,8 @@ export default function WorkoutDetail() {
         <View style={styles.actionsRow}>
           <Button
             title={workout.performed_at ? "Refaire la séance" : "Terminer la séance"}
-            onPress={openLog}
+            onPress={workout.performed_at ? openLog : completeSession}
+            loading={completing}
             testID="workout-log-open"
             variant="primary"
             style={{ flex: 1 }}
@@ -283,39 +373,108 @@ export default function WorkoutDetail() {
           const diffMeta = ex.last_difficulty
             ? DIFFICULTIES.find((d) => d.key === ex.last_difficulty)
             : null;
+          const isValidating = validatingExId === ex.id;
           return (
-            <View key={ex.id} style={styles.exRow} testID={`exercise-${ex.id}`}>
-              <Pressable onPress={() => openHistory(ex.name)} style={styles.exIcon} testID={`ex-history-${ex.id}`}>
-                <Ionicons name="trending-up-outline" size={18} color={colors.onBrandTertiary} />
-              </Pressable>
-              <View style={{ flex: 1 }}>
-                <View style={styles.exTopRow}>
-                  <Pressable onPress={() => openHistory(ex.name)} style={{ flex: 1 }}>
-                    <Text style={styles.exName} numberOfLines={1}>{ex.name}</Text>
-                  </Pressable>
-                  {diffMeta ? (
-                    <View style={[styles.diffPill, { backgroundColor: diffMeta.color + "22" }]}>
-                      <Ionicons name={diffMeta.icon} size={10} color={diffMeta.color} />
-                      <Text style={[styles.diffPillTxt, { color: diffMeta.color }]}>{diffMeta.label}</Text>
-                    </View>
-                  ) : null}
+            <View key={ex.id} style={styles.exCard} testID={`exercise-${ex.id}`}>
+              <View style={styles.exRow}>
+                <Pressable onPress={() => openHistory(ex.name)} style={styles.exIcon} testID={`ex-history-${ex.id}`}>
+                  <Ionicons name="trending-up-outline" size={18} color={colors.onBrandTertiary} />
+                </Pressable>
+                <View style={{ flex: 1 }}>
+                  <View style={styles.exTopRow}>
+                    <Pressable onPress={() => openHistory(ex.name)} style={{ flex: 1 }}>
+                      <Text style={styles.exName} numberOfLines={1}>{ex.name}</Text>
+                    </Pressable>
+                    {diffMeta ? (
+                      <View style={[styles.diffPill, { backgroundColor: diffMeta.color + "22" }]}>
+                        <Ionicons name={diffMeta.icon} size={10} color={diffMeta.color} />
+                        <Text style={[styles.diffPillTxt, { color: diffMeta.color }]}>{diffMeta.label}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text style={styles.exSub}>
+                    {ex.sets} séries × {ex.reps}
+                    {ex.target_weight_kg ? ` · ${ex.target_weight_kg} kg` : ""}
+                    {" · repos "}{ex.rest_seconds}s
+                  </Text>
+                  {ex.notes ? <Text style={styles.exNote}>{ex.notes}</Text> : null}
                 </View>
-                <Text style={styles.exSub}>
-                  {ex.sets} séries × {ex.reps}
-                  {ex.target_weight_kg ? ` · ${ex.target_weight_kg} kg` : ""}
-                  {" · repos "}{ex.rest_seconds}s
-                </Text>
-                {ex.notes ? <Text style={styles.exNote}>{ex.notes}</Text> : null}
+                <Pressable onPress={() => openGif(ex.name)} style={styles.miniBtn} testID={`exercise-gif-${ex.id}`}>
+                  <Ionicons name="play-circle-outline" size={20} color={colors.brandPrimary} />
+                </Pressable>
+                <Pressable onPress={() => openEdit(ex)} style={styles.miniBtn} testID={`exercise-edit-${ex.id}`}>
+                  <Ionicons name="create-outline" size={18} color={colors.brandPrimary} />
+                </Pressable>
+                <Pressable onPress={() => removeExercise(ex.id)} style={styles.miniBtn} testID={`exercise-delete-${ex.id}`}>
+                  <Ionicons name="trash-outline" size={18} color={colors.error} />
+                </Pressable>
               </View>
-              <Pressable onPress={() => openGif(ex.name)} style={styles.miniBtn} testID={`exercise-gif-${ex.id}`}>
-                <Ionicons name="play-circle-outline" size={20} color={colors.brandPrimary} />
-              </Pressable>
-              <Pressable onPress={() => openEdit(ex)} style={styles.miniBtn} testID={`exercise-edit-${ex.id}`}>
-                <Ionicons name="create-outline" size={18} color={colors.brandPrimary} />
-              </Pressable>
-              <Pressable onPress={() => removeExercise(ex.id)} style={styles.miniBtn} testID={`exercise-delete-${ex.id}`}>
-                <Ionicons name="trash-outline" size={18} color={colors.error} />
-              </Pressable>
+
+              {!isValidating ? (
+                <Pressable onPress={() => openValidate(ex)} style={styles.validateBtn} testID={`exercise-validate-${ex.id}`}>
+                  <Ionicons name="checkmark-circle-outline" size={16} color={colors.brandPrimary} />
+                  <Text style={styles.validateBtnTxt}>
+                    {diffMeta ? "Modifier la validation" : "Valider cet exercice"}
+                  </Text>
+                </Pressable>
+              ) : (
+                <View style={styles.validatePanel}>
+                  <View style={styles.diffRow}>
+                    {DIFFICULTIES.map((d) => {
+                      const active = draftDifficulty === d.key;
+                      return (
+                        <Pressable
+                          key={d.key}
+                          onPress={() => setDraftDifficulty(d.key)}
+                          style={[styles.diffBtn, active && { backgroundColor: d.color, borderColor: d.color }]}
+                          testID={`validate-diff-${ex.id}-${d.key}`}
+                        >
+                          <Ionicons name={d.icon} size={14} color={active ? "#FFF" : d.color} />
+                          <Text style={[styles.diffBtnTxt, active && { color: "#FFF" }]}>{d.label}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+
+                  {draftDifficulty !== "echec" ? (
+                    <>
+                      <View style={styles.adjustRow}>
+                        <Text style={styles.adjustLabel}>Poids : {draftWeight != null ? `${draftWeight} kg` : "—"}</Text>
+                        <View style={styles.chipRow}>
+                          {[1, 2, 5].map((n) => (
+                            <Pressable key={n} onPress={() => bumpWeight(n)} style={styles.chip} testID={`validate-weight-plus${n}-${ex.id}`}>
+                              <Text style={styles.chipTxt}>+{n} kg</Text>
+                            </Pressable>
+                          ))}
+                        </View>
+                      </View>
+                      <View style={styles.adjustRow}>
+                        <Text style={styles.adjustLabel}>Reps : {draftReps != null ? draftReps : "—"}</Text>
+                        <View style={styles.chipRow}>
+                          {[1, 2, 5].map((n) => (
+                            <Pressable key={n} onPress={() => bumpReps(n)} style={styles.chip} testID={`validate-reps-plus${n}-${ex.id}`}>
+                              <Text style={styles.chipTxt}>+{n}</Text>
+                            </Pressable>
+                          ))}
+                        </View>
+                      </View>
+                    </>
+                  ) : null}
+
+                  <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm }}>
+                    <Pressable onPress={cancelValidate} style={styles.cancelBtn} testID={`validate-cancel-${ex.id}`}>
+                      <Text style={styles.cancelBtnTxt}>Annuler</Text>
+                    </Pressable>
+                    <Button
+                      title="Valider"
+                      onPress={confirmValidate}
+                      loading={validateSaving}
+                      style={{ flex: 1 }}
+                      testID={`validate-confirm-${ex.id}`}
+                    />
+                  </View>
+                </View>
+              )}
             </View>
           );
         })}
@@ -465,27 +624,42 @@ export default function WorkoutDetail() {
                 </Text>
                 {(() => {
                   const weightsPts = historyPoints.filter((p) => p.weight_kg != null);
-                  if (weightsPts.length < 2) {
-                    return <Text style={styles.emptyEx}>Ajoutez au moins 2 séances avec poids pour voir la courbe.</Text>;
+                  const repsPts = historyPoints.filter((p) => p.reps_done != null);
+                  if (weightsPts.length < 2 && repsPts.length < 2) {
+                    return <Text style={styles.emptyEx}>Ajoutez au moins 2 séances pour voir la courbe.</Text>;
                   }
-                  const vals = weightsPts.map((p) => p.weight_kg as number);
-                  const max = Math.max(...vals);
-                  const min = Math.min(...vals);
-                  const range = Math.max(0.5, max - min);
+                  const CHART_W = 300;
+                  const CHART_H = 160;
+                  const weightPoints = buildSeries(weightsPts.map((p) => p.weight_kg as number), CHART_W, CHART_H);
+                  const repsPoints = buildSeries(repsPts.map((p) => p.reps_done as number), CHART_W, CHART_H);
                   return (
-                    <View style={styles.chartBox}>
-                      {weightsPts.map((p, i) => {
-                        const h = ((p.weight_kg as number) - min) / range;
-                        const barColor = p.difficulty === "facile" ? "#65A30D"
-                          : p.difficulty === "echec" ? "#DC2626"
-                          : "#0891B2";
-                        return (
-                          <View key={i} style={styles.chartCol}>
-                            <View style={[styles.chartBar, { height: 15 + h * 100, backgroundColor: barColor }]} />
-                            <Text style={styles.chartVal}>{p.weight_kg}</Text>
-                          </View>
-                        );
-                      })}
+                    <View>
+                      <View style={styles.legendRow}>
+                        <View style={styles.legendItem}>
+                          <View style={[styles.legendDot, { backgroundColor: "#0891B2" }]} />
+                          <Text style={styles.legendTxt}>Poids (kg)</Text>
+                        </View>
+                        <View style={styles.legendItem}>
+                          <View style={[styles.legendDot, { backgroundColor: "#F59E0B" }]} />
+                          <Text style={styles.legendTxt}>Répétitions</Text>
+                        </View>
+                      </View>
+                      <View style={styles.svgChartBox}>
+                        <Svg width="100%" height={CHART_H} viewBox={`0 0 ${CHART_W} ${CHART_H}`}>
+                          {weightPoints.length >= 2 ? (
+                            <Path d={smoothPath(weightPoints)} stroke="#0891B2" strokeWidth={2.5} fill="none" />
+                          ) : null}
+                          {weightPoints.map((p, i) => (
+                            <Circle key={`w-${i}`} cx={p.x} cy={p.y} r={3.5} fill="#0891B2" />
+                          ))}
+                          {repsPoints.length >= 2 ? (
+                            <Path d={smoothPath(repsPoints)} stroke="#F59E0B" strokeWidth={2.5} fill="none" />
+                          ) : null}
+                          {repsPoints.map((p, i) => (
+                            <Circle key={`r-${i}`} cx={p.x} cy={p.y} r={3.5} fill="#F59E0B" />
+                          ))}
+                        </Svg>
+                      </View>
                     </View>
                   );
                 })()}
@@ -577,11 +751,34 @@ const styles = StyleSheet.create({
     width: 40, height: 40, borderRadius: radius.pill,
     backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center",
   },
+  exCard: {
+    backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, marginBottom: spacing.sm,
+    padding: spacing.md,
+  },
   exRow: {
     flexDirection: "row", alignItems: "flex-start", gap: spacing.sm,
-    padding: spacing.md, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, marginBottom: spacing.sm,
     minHeight: 56,
   },
+  validateBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
+    marginTop: spacing.sm, paddingVertical: 8, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.brandPrimary, borderStyle: "dashed",
+  },
+  validateBtnTxt: { fontSize: font.sm, color: colors.brandPrimary, fontWeight: "500" },
+  validatePanel: {
+    marginTop: spacing.md, paddingTop: spacing.md,
+    borderTopWidth: 1, borderTopColor: colors.divider,
+  },
+  adjustRow: { marginTop: spacing.sm },
+  adjustLabel: { fontSize: font.sm, color: colors.onSurface, fontWeight: "500", marginBottom: 6 },
+  chipRow: { flexDirection: "row", gap: spacing.sm },
+  chip: {
+    paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill,
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.brandSecondary,
+  },
+  chipTxt: { fontSize: font.sm, color: colors.brandPrimary, fontWeight: "500" },
+  cancelBtn: { paddingHorizontal: spacing.lg, alignItems: "center", justifyContent: "center" },
+  cancelBtnTxt: { color: colors.onSurfaceSecondary, fontSize: font.base },
   exIcon: {
     width: 40, height: 40, borderRadius: radius.md,
     backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center",
@@ -614,6 +811,14 @@ const styles = StyleSheet.create({
     gap: 4, height: 140, padding: spacing.md, backgroundColor: colors.surfaceSecondary,
     borderRadius: radius.md, marginBottom: spacing.lg,
   },
+  svgChartBox: {
+    padding: spacing.md, backgroundColor: colors.surfaceSecondary,
+    borderRadius: radius.md, marginBottom: spacing.lg,
+  },
+  legendRow: { flexDirection: "row", gap: spacing.lg, marginBottom: spacing.sm },
+  legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
+  legendDot: { width: 8, height: 8, borderRadius: 4 },
+  legendTxt: { fontSize: font.sm, color: colors.onSurfaceSecondary },
   chartCol: { flex: 1, alignItems: "center", justifyContent: "flex-end" },
   chartBar: { width: "70%", borderTopLeftRadius: 4, borderTopRightRadius: 4 },
   chartVal: { fontSize: 9, color: colors.onSurfaceSecondary, marginTop: 4 },
