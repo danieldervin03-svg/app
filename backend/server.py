@@ -453,7 +453,12 @@ async def me(user: dict = Depends(get_current_user)):
 async def update_calorie_goal(body: CalorieGoalUpdate, user: dict = Depends(get_current_user)):
     await db.users.update_one(
         {"id": user["id"]},
-        {"$set": {"calorie_goal": body.calorie_goal, "calorie_goal_auto": False}},
+        {"$set": {
+            "calorie_goal": body.calorie_goal,
+            "calorie_goal_auto": False,
+            "calorie_last_adjust_at": now_utc(),
+            "calorie_last_adjust_reason": "Ajustement manuel depuis le profil.",
+        }},
     )
     updated = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password_hash": 0})
     return public_user(updated)
@@ -1569,6 +1574,32 @@ async def calorie_recommendation(user: dict = Depends(get_current_user)):
             "status": "insufficient_data",
             "last_adjusted_at": user.get("calorie_last_adjust_at"),
         }
+
+    # Respect the same cooldown as the automatic adjustment: don't re-suggest right
+    # after a change (manual or automatic) — give new weight data time to reflect it.
+    last_ts = user.get("calorie_last_adjust_at")
+    if last_ts:
+        try:
+            last_dt = datetime.fromisoformat(str(last_ts).replace("Z", "+00:00"))
+            days_since = (datetime.now(timezone.utc) - last_dt).days
+            if days_since < ADJUST_COOLDOWN_DAYS:
+                return {
+                    "applicable": True,
+                    "current_goal": current_goal,
+                    "suggested_goal": current_goal,
+                    "delta_kcal": 0,
+                    "weekly_change_kg": stats["change_kg_per_week"],
+                    "span_days": stats["span_days"],
+                    "reason": f"Objectif ajusté il y a {days_since} j. On attend encore "
+                              f"{ADJUST_COOLDOWN_DAYS - days_since} j de nouvelles données avant de suggérer un nouveau changement.",
+                    "status": "on_track",
+                    "should_adjust": False,
+                    "target_range_kg_per_week": GOAL_TARGET_KG_PER_WEEK[fitness_goal],
+                    "last_adjusted_at": last_ts,
+                }
+        except Exception:
+            pass
+
     decision = _decide_calorie_adjustment(fitness_goal, stats["change_kg_per_week"], current_goal)
     return {
         "applicable": True,
