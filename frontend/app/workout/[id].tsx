@@ -383,7 +383,7 @@ export default function WorkoutDetail() {
                 <View style={{ flex: 1 }}>
                   <View style={styles.exTopRow}>
                     <Pressable onPress={() => openHistory(ex.name)} style={{ flex: 1 }}>
-                      <Text style={styles.exName} numberOfLines={1}>{ex.name}</Text>
+                      <Text style={styles.exName}>{ex.name}</Text>
                     </Pressable>
                     {diffMeta ? (
                       <View style={[styles.diffPill, { backgroundColor: diffMeta.color + "22" }]}>
