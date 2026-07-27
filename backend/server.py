@@ -941,8 +941,10 @@ async def log_single_exercise(
     ex["last_difficulty"] = body.difficulty
     if body.weight_kg is not None:
         ex["last_weight_kg"] = body.weight_kg
+        ex["target_weight_kg"] = body.weight_kg  # reflect the validated weight as the new plan
     if body.reps_done is not None:
         ex["last_reps_done"] = body.reps_done
+        ex["reps"] = str(body.reps_done)  # reflect the validated reps as the new plan
 
     await db.workouts.update_one({"id": workout_id}, {"$set": {"exercises": exercises}})
 

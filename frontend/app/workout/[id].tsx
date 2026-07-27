@@ -210,7 +210,7 @@ export default function WorkoutDetail() {
 
   const completeSession = () => {
     if (!workout) return;
-    Alert.alert("Terminer la séance", "Marquer cette séance comme terminée ?", [
+    Alert.alert("Terminer et valider la séance", "Marquer cette séance comme terminée ? Elle apparaîtra dans l'historique de \"Mes entraînements\".", [
       { text: "Annuler", style: "cancel" },
       {
         text: "Terminer", style: "default",
@@ -343,8 +343,8 @@ export default function WorkoutDetail() {
 
         <View style={styles.actionsRow}>
           <Button
-            title={workout.performed_at ? "Refaire la séance" : "Terminer la séance"}
-            onPress={workout.performed_at ? openLog : completeSession}
+            title="Terminer et valider la séance"
+            onPress={completeSession}
             loading={completing}
             testID="workout-log-open"
             variant="primary"
