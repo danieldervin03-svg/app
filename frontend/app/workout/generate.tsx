@@ -14,15 +14,20 @@ const LEVELS = ["débutant", "intermédiaire", "avancé"] as const;
 const DURATIONS = [30, 45, 60, 90];
 const EQUIP = ["poids du corps", "haltères", "salle de sport"];
 const SESSIONS_PER_WEEK = [2, 3, 4, 5, 6];
-const TYPES: { key: "full_body" | "split"; label: string; sub: string }[] = [
+const TYPES: { key: "full_body" | "split" | "upper_lower" | "ppl" | "bro_split" | "force" | "circuit"; label: string; sub: string }[] = [
   { key: "full_body", label: "Full body", sub: "Corps entier à chaque séance" },
+  { key: "upper_lower", label: "Haut / Bas", sub: "Alterne haut du corps et bas du corps" },
+  { key: "ppl", label: "Push / Pull / Legs", sub: "Poussée, tirage, jambes en rotation" },
   { key: "split", label: "Split classique", sub: "Lundi pecs+biceps, mardi dos, etc." },
+  { key: "bro_split", label: "Bro split", sub: "Un seul groupe musculaire par séance" },
+  { key: "force", label: "Force / Powerlifting", sub: "Squat, développé, soulevé de terre — charges lourdes" },
+  { key: "circuit", label: "Circuit / Fonctionnel", sub: "Type HIIT, peu de repos, cardio + renfo" },
 ];
 
 export default function GenerateWorkout() {
   const router = useRouter();
   const { user } = useAuth();
-  const [programType, setProgramType] = useState<"full_body" | "split">("full_body");
+  const [programType, setProgramType] = useState<"full_body" | "split" | "upper_lower" | "ppl" | "bro_split" | "force" | "circuit">("full_body");
   const [sessions, setSessions] = useState(3);
   const [goal, setGoal] = useState(user?.fitness_goal ?? "prise de masse");
   const [level, setLevel] = useState<(typeof LEVELS)[number]>("intermédiaire");

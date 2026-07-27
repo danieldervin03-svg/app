@@ -298,7 +298,7 @@ export const api = {
   generateProgram: (body: {
     goal: string;
     level: "débutant" | "intermédiaire" | "avancé";
-    program_type: "full_body" | "split";
+    program_type: "full_body" | "split" | "upper_lower" | "ppl" | "bro_split" | "force" | "circuit";
     sessions_per_week: number;
     duration_minutes: number;
     equipment: string;

@@ -237,7 +237,9 @@ class WorkoutGenerateInput(BaseModel):
 class ProgramGenerateInput(BaseModel):
     goal: str
     level: Literal["débutant", "intermédiaire", "avancé"] = "intermédiaire"
-    program_type: Literal["full_body", "split"] = "full_body"
+    program_type: Literal[
+        "full_body", "split", "upper_lower", "ppl", "bro_split", "force", "circuit"
+    ] = "full_body"
     sessions_per_week: int = Field(ge=2, le=6, default=3)
     duration_minutes: int = 45
     equipment: str = "salle de sport"
@@ -725,6 +727,35 @@ async def generate_program(body: ProgramGenerateInput, user: dict = Depends(get_
         style = (
             f"Génère {body.sessions_per_week} séances FULL BODY identiques dans leur structure mais "
             "avec exercices variés (rotation d'exercices sollicitant tout le corps à chaque séance)."
+        )
+    elif body.program_type == "upper_lower":
+        style = (
+            f"Génère {body.sessions_per_week} séances en alternant HAUT DU CORPS et BAS DU CORPS "
+            "(ex: 'Haut du corps A', 'Bas du corps A', 'Haut du corps B', 'Bas du corps B'...). "
+            "Haut du corps = pecs, dos, épaules, bras. Bas du corps = quadriceps, ischios, fessiers, mollets."
+        )
+    elif body.program_type == "ppl":
+        style = (
+            f"Génère {body.sessions_per_week} séances selon le principe PUSH / PULL / LEGS, en répétant "
+            "le cycle si besoin ('Push' = pecs+épaules+triceps, 'Pull' = dos+biceps, 'Legs' = jambes complètes)."
+        )
+    elif body.program_type == "bro_split":
+        style = (
+            f"Génère {body.sessions_per_week} séances de BRO SPLIT : un seul groupe musculaire majeur "
+            "par séance (ex: 'Pecs', 'Dos', 'Épaules', 'Bras', 'Jambes', 'Abdos'), avec beaucoup d'exercices "
+            "d'isolation en plus des mouvements de base pour bien épuiser le groupe ciblé."
+        )
+    elif body.program_type == "force":
+        style = (
+            f"Génère {body.sessions_per_week} séances axées FORCE / POWERLIFTING, centrées sur les "
+            "mouvements polyarticulaires lourds (squat, développé couché, soulevé de terre, développé militaire). "
+            "Séries courtes (3 à 6 reps), charges élevées, temps de repos longs (120 à 240s). Peu d'isolation."
+        )
+    elif body.program_type == "circuit":
+        style = (
+            f"Génère {body.sessions_per_week} séances de CIRCUIT / ENTRAÎNEMENT FONCTIONNEL type HIIT : "
+            "exercices enchaînés avec peu de repos entre eux (15 à 30s), répétitions hautes ou en durée "
+            "(ex: '30s' ou '20 reps'), mélange cardio + renforcement pour maximiser la dépense calorique."
         )
     else:
         style = (
