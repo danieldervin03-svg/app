@@ -441,8 +441,13 @@ export default function WorkoutDetail() {
                       <View style={styles.adjustRow}>
                         <Text style={styles.adjustLabel}>Poids : {draftWeight != null ? `${draftWeight} kg` : "—"}</Text>
                         <View style={styles.chipRow}>
+                          {[5, 2, 1].map((n) => (
+                            <Pressable key={`-${n}`} onPress={() => bumpWeight(-n)} style={styles.chipMinus} testID={`validate-weight-minus${n}-${ex.id}`}>
+                              <Text style={styles.chipMinusTxt}>-{n} kg</Text>
+                            </Pressable>
+                          ))}
                           {[1, 2, 5].map((n) => (
-                            <Pressable key={n} onPress={() => bumpWeight(n)} style={styles.chip} testID={`validate-weight-plus${n}-${ex.id}`}>
+                            <Pressable key={`+${n}`} onPress={() => bumpWeight(n)} style={styles.chip} testID={`validate-weight-plus${n}-${ex.id}`}>
                               <Text style={styles.chipTxt}>+{n} kg</Text>
                             </Pressable>
                           ))}
@@ -451,8 +456,13 @@ export default function WorkoutDetail() {
                       <View style={styles.adjustRow}>
                         <Text style={styles.adjustLabel}>Reps : {draftReps != null ? draftReps : "—"}</Text>
                         <View style={styles.chipRow}>
+                          {[5, 2, 1].map((n) => (
+                            <Pressable key={`-${n}`} onPress={() => bumpReps(-n)} style={styles.chipMinus} testID={`validate-reps-minus${n}-${ex.id}`}>
+                              <Text style={styles.chipMinusTxt}>-{n}</Text>
+                            </Pressable>
+                          ))}
                           {[1, 2, 5].map((n) => (
-                            <Pressable key={n} onPress={() => bumpReps(n)} style={styles.chip} testID={`validate-reps-plus${n}-${ex.id}`}>
+                            <Pressable key={`+${n}`} onPress={() => bumpReps(n)} style={styles.chip} testID={`validate-reps-plus${n}-${ex.id}`}>
                               <Text style={styles.chipTxt}>+{n}</Text>
                             </Pressable>
                           ))}
@@ -771,12 +781,17 @@ const styles = StyleSheet.create({
   },
   adjustRow: { marginTop: spacing.sm },
   adjustLabel: { fontSize: font.sm, color: colors.onSurface, fontWeight: "500", marginBottom: 6 },
-  chipRow: { flexDirection: "row", gap: spacing.sm },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   chip: {
     paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill,
     backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.brandSecondary,
   },
   chipTxt: { fontSize: font.sm, color: colors.brandPrimary, fontWeight: "500" },
+  chipMinus: {
+    paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill,
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.divider,
+  },
+  chipMinusTxt: { fontSize: font.sm, color: colors.onSurfaceSecondary, fontWeight: "500" },
   cancelBtn: { paddingHorizontal: spacing.lg, alignItems: "center", justifyContent: "center" },
   cancelBtnTxt: { color: colors.onSurfaceSecondary, fontSize: font.base },
   exIcon: {

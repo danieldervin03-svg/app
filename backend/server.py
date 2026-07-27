@@ -586,6 +586,47 @@ async def create_workout(body: WorkoutCreate, user: dict = Depends(get_current_u
     return wk
 
 
+@api.get("/workouts/history")
+async def workout_history(user: dict = Depends(get_current_user)):
+    """Real history of completed sessions (one entry per day a session was logged),
+    built from session_logs rather than the workout templates themselves, since a
+    template can be redone multiple times."""
+    logs = await db.session_logs.find(
+        {"user_id": user["id"]}, {"_id": 0}
+    ).sort("performed_at", -1).to_list(200)
+    if not logs:
+        return {"sessions": []}
+
+    workout_ids = list({lg["workout_id"] for lg in logs})
+    workouts_docs = await db.workouts.find(
+        {"id": {"$in": workout_ids}, "user_id": user["id"]}, {"_id": 0}
+    ).to_list(500)
+    workouts_by_id = {w["id"]: w for w in workouts_docs}
+
+    sessions = []
+    for lg in logs:
+        wk = workouts_by_id.get(lg["workout_id"])
+        ex_by_id = {e["id"]: e for e in wk.get("exercises", [])} if wk else {}
+        entries = []
+        for e in lg.get("entries", []):
+            ex = ex_by_id.get(e.get("exercise_id"))
+            entries.append({
+                "exercise_id": e.get("exercise_id"),
+                "exercise_name": ex["name"] if ex else "Exercice supprimé",
+                "difficulty": e.get("difficulty"),
+                "weight_kg": e.get("weight_kg"),
+                "reps_done": e.get("reps_done"),
+            })
+        sessions.append({
+            "id": lg["id"],
+            "workout_id": lg["workout_id"],
+            "workout_title": wk["title"] if wk else "Séance supprimée",
+            "performed_at": lg["performed_at"],
+            "entries": entries,
+        })
+    return {"sessions": sessions}
+
+
 @api.get("/workouts/{workout_id}", response_model=Workout)
 async def get_workout(workout_id: str, user: dict = Depends(get_current_user)):
     doc = await db.workouts.find_one({"id": workout_id, "user_id": user["id"]}, {"_id": 0})
@@ -614,16 +655,6 @@ async def delete_workout(workout_id: str, user: dict = Depends(get_current_user)
     if res.deleted_count == 0:
         raise HTTPException(404, "Entraînement introuvable")
     return {"ok": True}
-
-
-@api.post("/workouts/{workout_id}/complete", response_model=Workout)
-async def complete_workout(workout_id: str, user: dict = Depends(get_current_user)):
-    doc = await db.workouts.find_one({"id": workout_id, "user_id": user["id"]}, {"_id": 0})
-    if not doc:
-        raise HTTPException(404, "Entraînement introuvable")
-    await db.workouts.update_one({"id": workout_id}, {"$set": {"performed_at": now_utc()}})
-    updated = await db.workouts.find_one({"id": workout_id}, {"_id": 0})
-    return Workout(**updated)
 
 
 @api.post("/workouts/generate", response_model=Workout)

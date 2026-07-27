@@ -288,8 +288,6 @@ export const api = {
   updateWorkout: (id: string, body: Partial<Workout>) =>
     request<Workout>(`/workouts/${id}`, { method: "PUT", body }),
   deleteWorkout: (id: string) => request<{ ok: boolean }>(`/workouts/${id}`, { method: "DELETE" }),
-  completeWorkout: (id: string) =>
-    request<Workout>(`/workouts/${id}/complete`, { method: "POST" }),
   generateWorkout: (body: {
     goal: string;
     level: "débutant" | "intermédiaire" | "avancé";
@@ -314,6 +312,22 @@ export const api = {
   }) => request<{ workout: Workout }>(`/workouts/${workoutId}/exercises/${exerciseId}/log`, { method: "POST", body }),
   completeWorkout: (id: string) =>
     request<{ workout: Workout }>(`/workouts/${id}/complete`, { method: "POST" }),
+  workoutHistory: () =>
+    request<{
+      sessions: {
+        id: string;
+        workout_id: string;
+        workout_title: string;
+        performed_at: string;
+        entries: {
+          exercise_id: string;
+          exercise_name: string;
+          difficulty: "facile" | "reussi" | "echec" | null;
+          weight_kg: number | null;
+          reps_done: number | null;
+        }[];
+      }[];
+    }>("/workouts/history"),
 
   // Meals
   listMeals: (date?: string) =>
