@@ -5,7 +5,7 @@ const TOKEN_KEY = "bp_token";
 
 export type ApiError = { message: string; status: number };
 
-async function getToken(): Promise<string | null> {
+export async function getToken(): Promise<string | null> {
   const t = await storage.secureGet<string>(TOKEN_KEY, "");
   return t && t.length > 0 ? t : null;
 }
@@ -13,6 +13,10 @@ async function getToken(): Promise<string | null> {
 export async function setToken(token: string | null) {
   if (token) await storage.secureSet(TOKEN_KEY, token);
   else await storage.secureRemove(TOKEN_KEY);
+}
+
+export function getExerciseGifImageUrl(name: string): string {
+  return `${BASE}/api/exercises/gif-image?name=${encodeURIComponent(name)}`;
 }
 
 async function request<T>(

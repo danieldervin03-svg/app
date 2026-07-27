@@ -7,7 +7,7 @@ import { Image } from "expo-image";
 import { colors, font, radius, spacing } from "@/src/theme";
 import { Button, Input } from "@/src/components/ui";
 import { CoachChat } from "@/src/components/coach-chat";
-import { api, Exercise, ExerciseHistoryPoint, LogEntry, Workout } from "@/src/api";
+import { api, Exercise, ExerciseHistoryPoint, LogEntry, Workout, getToken, getExerciseGifImageUrl } from "@/src/api";
 
 type Difficulty = "facile" | "reussi" | "echec";
 const DIFFICULTIES: { key: Difficulty; label: string; color: string; icon: any }[] = [
@@ -34,6 +34,8 @@ export default function WorkoutDetail() {
   const [gifLoading, setGifLoading] = useState(false);
   const [gifUrl, setGifUrl] = useState<string | null>(null);
   const [gifFound, setGifFound] = useState(true);
+  const [gifLoadError, setGifLoadError] = useState(false);
+  const [gifAuthHeader, setGifAuthHeader] = useState<{ Authorization: string } | null>(null);
 
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState<Exercise | null>(null);
@@ -161,15 +163,18 @@ export default function WorkoutDetail() {
   };
 
   const openGif = async (exName: string) => {
+    setGifLoadError(false);
+    setGifAuthHeader(null);
     setGifExName(exName);
     setGifOpen(true);
     setGifLoading(true);
     setGifUrl(null);
     setGifFound(true);
     try {
-      const res = await api.getExerciseGif(exName);
+      const [res, token] = await Promise.all([api.getExerciseGif(exName), getToken()]);
       setGifUrl(res.gif_url);
       setGifFound(res.found);
+      if (token) setGifAuthHeader({ Authorization: `Bearer ${token}` });
     } catch {
       setGifFound(false);
     } finally {
@@ -515,12 +520,13 @@ export default function WorkoutDetail() {
                   Recherche d'une démonstration…
                 </Text>
               </View>
-            ) : gifUrl ? (
+            ) : gifUrl && !gifLoadError && gifAuthHeader ? (
               <Image
-                source={{ uri: gifUrl }}
+                source={{ uri: getExerciseGifImageUrl(gifExName), headers: gifAuthHeader }}
                 style={styles.gifImage}
                 contentFit="contain"
                 autoplay
+                onError={() => setGifLoadError(true)}
               />
             ) : (
               <View style={{ alignItems: "center", padding: spacing.xl }}>
@@ -530,6 +536,9 @@ export default function WorkoutDetail() {
                     ? "Aucune démonstration disponible pour cet exercice."
                     : "Impossible de charger la démonstration pour le moment."}
                 </Text>
+                {gifUrl ? (
+                  <Text style={{ fontSize: 10, color: colors.onSurfaceTertiary, marginTop: 8 }}>{gifUrl}</Text>
+                ) : null}
               </View>
             )}
             <Pressable onPress={() => setGifOpen(false)} style={{ alignItems: "center", padding: spacing.md }}>

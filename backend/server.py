@@ -1,6 +1,6 @@
 """Bodypilot backend – FastAPI + MongoDB + JWT auth + Emergent LLM."""
 
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -816,6 +816,33 @@ async def get_exercise_gif(name: str, user: dict = Depends(get_current_user)):
 
     await db.exercise_gifs.insert_one(dict(result))
     return result
+
+
+@api.get("/exercises/gif-image")
+async def get_exercise_gif_image(name: str, user: dict = Depends(get_current_user)):
+    """Proxy: fetches the GIF bytes from WorkoutX (using our server-side API key)
+    and serves them directly, since WorkoutX's gifUrl requires auth the app can't attach."""
+    key = _normalize_exercise_key(name)
+    cached = await db.exercise_gifs.find_one({"key": key}, {"_id": 0})
+
+    gif_url = cached.get("gif_url") if cached else None
+    if not gif_url:
+        raise HTTPException(404, "Pas de démonstration disponible pour cet exercice")
+
+    if not WORKOUTX_API_KEY:
+        raise HTTPException(502, "Clé WorkoutX manquante")
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(gif_url, headers={"X-WorkoutX-Key": WORKOUTX_API_KEY})
+        if resp.status_code != 200:
+            raise HTTPException(502, "Impossible de récupérer la démonstration")
+        return Response(content=resp.content, media_type="image/gif")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Exercise GIF proxy error for '%s': %s", name, e)
+        raise HTTPException(502, "Impossible de récupérer la démonstration")
 
 
 # ============================================================================
