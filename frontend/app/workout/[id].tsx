@@ -219,6 +219,7 @@ export default function WorkoutDetail() {
           try {
             const res = await api.completeWorkout(workout.id);
             setWorkout(res.workout);
+            router.back();
           } catch {} finally {
             setCompleting(false);
           }
