@@ -74,6 +74,7 @@ export default function WorkoutDetail() {
   const [validateSaving, setValidateSaving] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [celebrateOpen, setCelebrateOpen] = useState(false);
+  const [celebrateStats, setCelebrateStats] = useState<{ reussi: number; facile: number; echec: number } | null>(null);
 
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState<Exercise | null>(null);
@@ -218,8 +219,13 @@ export default function WorkoutDetail() {
         onPress: async () => {
           setCompleting(true);
           try {
+            const stats = { reussi: 0, facile: 0, echec: 0 };
+            workout.exercises.forEach((e) => {
+              if (e.last_difficulty) stats[e.last_difficulty]++;
+            });
             const res = await api.completeWorkout(workout.id);
             setWorkout(res.workout);
+            setCelebrateStats(stats);
             setCelebrateOpen(true);
           } catch {} finally {
             setCompleting(false);
@@ -403,7 +409,10 @@ export default function WorkoutDetail() {
           return (
             <View
               key={ex.id}
-              style={[styles.exCard, isDone && styles.exCardDone]}
+              style={[
+                styles.exCard,
+                isDone && { backgroundColor: diffMeta!.color + "1A", borderColor: diffMeta!.color + "55", borderWidth: 1 },
+              ]}
               testID={`exercise-${ex.id}`}
             >
               <View style={styles.exRow}>
@@ -768,10 +777,10 @@ export default function WorkoutDetail() {
             <Text style={styles.celebrateEmoji}>🎉</Text>
             <Text style={styles.celebrateTitle}>Bravo, séance terminée !</Text>
             <Text style={styles.celebrateSub}>{workout?.title}</Text>
-            {workout ? (
+            {celebrateStats ? (
               <View style={styles.celebrateStatsRow}>
                 {(["reussi", "facile", "echec"] as const).map((k) => {
-                  const count = workout.exercises.filter((e) => e.last_difficulty === k).length;
+                  const count = celebrateStats[k];
                   if (count === 0) return null;
                   const meta = DIFFICULTIES.find((d) => d.key === k)!;
                   return (

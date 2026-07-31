@@ -1017,12 +1017,22 @@ async def log_single_exercise(
 
 @api.post("/workouts/{workout_id}/complete")
 async def complete_workout(workout_id: str, user: dict = Depends(get_current_user)):
-    """Mark the session itself as done. No exercise data required — exercises are
-    now validated individually as they're finished, via /exercises/{id}/log."""
+    """Mark the session itself as done, and reset each exercise's visual validation
+    state (last_difficulty/last_weight_kg/last_reps_done) so the workout appears
+    fresh/unvalidated the next time it's opened (e.g. next week). The actual
+    performance data stays safely recorded in session_logs for history purposes."""
     doc = await db.workouts.find_one({"id": workout_id, "user_id": user["id"]}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Entraînement introuvable")
-    await db.workouts.update_one({"id": workout_id}, {"$set": {"performed_at": now_utc()}})
+    exercises = doc.get("exercises", [])
+    for ex in exercises:
+        ex["last_difficulty"] = None
+        ex["last_weight_kg"] = None
+        ex["last_reps_done"] = None
+    await db.workouts.update_one(
+        {"id": workout_id},
+        {"$set": {"performed_at": now_utc(), "exercises": exercises}},
+    )
     updated = await db.workouts.find_one({"id": workout_id}, {"_id": 0})
     return {"workout": Workout(**updated).model_dump()}
 async def workout_logs(workout_id: str, user: dict = Depends(get_current_user)):
