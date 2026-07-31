@@ -528,8 +528,11 @@ async def ask_llm_json(
     image_bytes: Optional[bytes] = None,
     image_mime: str = "image/jpeg",
     max_tokens: int = 1500,
+    model: Optional[str] = None,
 ) -> dict:
-    """Ask Claude for a JSON response. Robust to code fences. Optionally attach an image (vision)."""
+    """Ask Claude for a JSON response. Robust to code fences. Optionally attach an image (vision).
+    Pass `model` to override the default text/vision model selection (e.g. force Sonnet for
+    tasks that need more precision, like nutrition estimation)."""
     try:
         if image_bytes:
             image_b64 = base64.b64encode(image_bytes).decode("utf-8")
@@ -540,12 +543,12 @@ async def ask_llm_json(
                 },
                 {"type": "text", "text": user_prompt},
             ]
-            model = ANTHROPIC_MODEL_VISION
+            resolved_model = model or ANTHROPIC_MODEL_VISION
         else:
             content = user_prompt
-            model = ANTHROPIC_MODEL_TEXT
+            resolved_model = model or ANTHROPIC_MODEL_TEXT
         response = await anthropic_client.messages.create(
-            model=model,
+            model=resolved_model,
             max_tokens=max_tokens,
             system=system,
             messages=[{"role": "user", "content": content}],
@@ -1253,7 +1256,10 @@ async def suggest_meals(body: MealSuggestInput, user: dict = Depends(get_current
         '{"suggestions": [{"name": "string", "calories": int, "protein_g": number, "carbs_g": number, '
         '"fat_g": number, "fiber_g": number, "ingredients": ["string", ...], "description": "string court"}]}'
     )
-    data = await ask_llm_json(system, prompt, f"gen-meal-{user['id']}-{uuid.uuid4()}", max_tokens=2000)
+    data = await ask_llm_json(
+        system, prompt, f"gen-meal-{user['id']}-{uuid.uuid4()}",
+        max_tokens=2000, model=ANTHROPIC_MODEL_VISION,
+    )
     suggestions = data.get("suggestions", [])[:3]
     cleaned = []
     for s in suggestions:
@@ -1274,15 +1280,23 @@ async def suggest_meals(body: MealSuggestInput, user: dict = Depends(get_current
 async def estimate_meal(body: MealEstimateInput, user: dict = Depends(get_current_user)):
     """Estimate calories + macros + guess a short name for a meal from a free-form French description."""
     system = (
-        "Tu es un nutritionniste. Tu réponds STRICTEMENT en JSON valide, sans texte hors JSON, "
-        "sans code fences. Toutes les valeurs textuelles sont en français."
+        "Tu es un nutritionniste expert, rigoureux et précis. Tu connais les valeurs nutritionnelles "
+        "standards (tables CIQUAL / USDA) des aliments courants pour 100g. Tu réponds STRICTEMENT en "
+        "JSON valide, sans texte hors JSON, sans code fences. Toutes les valeurs textuelles sont en "
+        "français."
     )
     prompt = (
         f"Description du repas: « {body.description.strip()} »\n\n"
-        "Estime les calories totales et les macronutriments (protéines, glucides, lipides, fibres en "
-        "grammes) de ce repas. Sois réaliste, en tenant compte des quantités mentionnées. Si aucune "
-        "quantité n'est donnée, estime pour une portion adulte moyenne. Les macronutriments doivent être "
-        "cohérents avec les calories totales (protéines et glucides ≈4 kcal/g, lipides ≈9 kcal/g).\n\n"
+        "Procède en deux étapes internes avant de répondre (ne montre que le résultat final dans le JSON) :\n"
+        "1. Décompose le repas en ingrédients/composants distincts. Pour chaque composant, estime son "
+        "poids en grammes (à partir des quantités mentionnées, ou d'une portion adulte standard sinon), "
+        "puis applique les valeurs nutritionnelles connues pour 100g de cet aliment (ex: riz cuit ≈130 "
+        "kcal/100g, poulet grillé ≈165 kcal/100g, huile ≈884 kcal/100g).\n"
+        "2. Additionne les calories et macronutriments (protéines, glucides, lipides, fibres) de tous "
+        "les composants pour obtenir le total du repas.\n\n"
+        "Sois réaliste et rigoureux — ne sous-estime pas les matières grasses de cuisson (huile, beurre, "
+        "sauces) ni les féculents. Les macronutriments doivent être cohérents avec les calories totales "
+        "(protéines et glucides ≈4 kcal/g, lipides ≈9 kcal/g, avec une marge de tolérance de ±10%).\n\n"
         'Réponds avec ce schéma JSON exact:\n'
         '{"name": "string court 3-6 mots", '
         '"calories": int, '
@@ -1291,9 +1305,13 @@ async def estimate_meal(body: MealEstimateInput, user: dict = Depends(get_curren
         '"fat_g": number, '
         '"fiber_g": number, '
         '"meal_type": "petit-déjeuner|déjeuner|dîner|collation", '
-        '"breakdown": "string très court expliquant l\'estimation"}'
+        '"breakdown": "string court listant les composants et leur poids estimé, ex: \'150g riz, 120g '
+        'poulet, 1c.à.s huile\'"}'
     )
-    data = await ask_llm_json(system, prompt, f"est-meal-{user['id']}-{uuid.uuid4()}", max_tokens=1500)
+    data = await ask_llm_json(
+        system, prompt, f"est-meal-{user['id']}-{uuid.uuid4()}",
+        max_tokens=1500, model=ANTHROPIC_MODEL_VISION,
+    )
     mt = str(data.get("meal_type", "déjeuner")).lower()
     if mt not in ("petit-déjeuner", "déjeuner", "dîner", "collation"):
         mt = "déjeuner"
