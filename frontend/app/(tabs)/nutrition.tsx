@@ -42,8 +42,10 @@ export default function NutritionScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const [suggestType, setSuggestType] = useState<Meal["meal_type"]>("déjeuner");
+  const [suggestCalories, setSuggestCalories] = useState("");
   const [suggestPref, setSuggestPref] = useState("");
   const [suggestLoading, setSuggestLoading] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<MealSuggestion[]>([]);
 
   const [scanOpen, setScanOpen] = useState(false);
@@ -281,17 +283,21 @@ export default function NutritionScreen() {
   const runSuggest = async () => {
     setSuggestLoading(true);
     setSuggestions([]);
+    setSuggestError(null);
     try {
-      // Toujours utiliser la portion par repas définie par le profil,
-      // indépendamment des calories déjà consommées dans la journée.
-      const perMeal = Math.round(goal / (user?.meals_per_day ?? 4));
+      const parsed = parseInt(suggestCalories, 10);
+      const target = Number.isFinite(parsed) && parsed > 0
+        ? parsed
+        : Math.round(goal / (user?.meals_per_day ?? 4));
       const res = await api.suggestMeals({
-        remaining_calories: Math.max(150, perMeal),
+        remaining_calories: Math.max(50, target),
         meal_type: suggestType,
         preferences: suggestPref,
       });
       setSuggestions(res.suggestions);
-    } catch {} finally {
+    } catch (e: any) {
+      setSuggestError(e.message ?? "Impossible de générer des idées pour le moment, réessayez.");
+    } finally {
       setSuggestLoading(false);
     }
   };
@@ -448,7 +454,14 @@ export default function NutritionScreen() {
                 <Ionicons name="add" size={18} color={colors.onBrandPrimary} />
                 <Text style={styles.actionTxt}>Ajouter un repas</Text>
               </Pressable>
-              <Pressable style={styles.actionBtnAlt} onPress={() => setSuggestOpen(true)} testID="nutrition-ai-suggest">
+              <Pressable
+                style={styles.actionBtnAlt}
+                onPress={() => {
+                  setSuggestCalories(String(Math.round(goal / (user?.meals_per_day ?? 4))));
+                  setSuggestOpen(true);
+                }}
+                testID="nutrition-ai-suggest"
+              >
                 <Ionicons name="sparkles-outline" size={18} color={colors.brandPrimary} />
                 <Text style={styles.actionTxtAlt}>Idées IA</Text>
               </Pressable>
@@ -653,7 +666,15 @@ export default function NutritionScreen() {
             <View style={[styles.modalCard, { maxHeight: "85%" }]}>
               <View style={styles.dragHandle} />
               <Text style={styles.modalTitle}>Idées repas IA</Text>
-              <Text style={styles.modalSub}>{`Cible : ~${Math.round(goal / (user?.meals_per_day ?? 4))} kcal par repas (basé sur votre profil)`}</Text>
+
+              <Input
+                label="Calories cibles pour ce repas"
+                placeholder="Ex : 500"
+                keyboardType="number-pad"
+                value={suggestCalories}
+                onChangeText={setSuggestCalories}
+                testID="meal-ai-calories-input"
+              />
 
               <Text style={styles.subLabel}>Type</Text>
               <View style={styles.chipsRow}>
@@ -668,8 +689,15 @@ export default function NutritionScreen() {
                 ))}
               </View>
 
-              <Input label="Préférences (facultatif)" placeholder="Ex : végétarien, sans gluten" value={suggestPref} onChangeText={setSuggestPref} />
+              <Input
+                label="Contexte ou préférences (facultatif)"
+                placeholder="Ex : je suis au supermarché, repas rapide sans cuisine…"
+                value={suggestPref}
+                onChangeText={setSuggestPref}
+                testID="meal-ai-preferences-input"
+              />
               <Button title="Générer" onPress={runSuggest} loading={suggestLoading} testID="meal-ai-generate" />
+              {suggestError ? <Text style={{ color: colors.error, textAlign: "center", marginTop: spacing.sm }}>{suggestError}</Text> : null}
 
               <ScrollView style={{ marginTop: spacing.md }}>
                 {suggestions.map((s, i) => (

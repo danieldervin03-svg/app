@@ -360,7 +360,7 @@ export const api = {
     remaining_calories: number;
     meal_type: Meal["meal_type"];
     preferences?: string;
-  }) => request<{ suggestions: MealSuggestion[] }>("/meals/suggest", { method: "POST", body }),
+  }) => request<{ suggestions: MealSuggestion[] }>("/meals/suggest", { method: "POST", body, timeoutMs: 45000 }),
   estimateMeal: (description: string) =>
     request<{
       name: string;

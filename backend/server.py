@@ -1251,7 +1251,13 @@ async def suggest_meals(body: MealSuggestInput, user: dict = Depends(get_current
     prompt = (
         f"Propose 3 idées de {body.meal_type} adaptées.\n"
         f"Calories cibles totales par repas: environ {max(150, body.remaining_calories)} kcal.\n"
-        f"Préférences/contraintes: {body.preferences or 'aucune'}.\n\n"
+        f"Contexte donné par l'utilisateur : {body.preferences or 'aucun'}.\n\n"
+        "Ce contexte peut décrire une situation (ex: \"je suis au supermarché, repas rapide sans "
+        "cuisine\", \"je n'ai que 10 minutes\", \"je mange au bureau\") autant qu'une restriction "
+        "alimentaire (végétarien, sans gluten...). Adapte tes propositions en conséquence : si la "
+        "personne est pressée ou dans un magasin, propose des options prêtes à consommer ou à "
+        "préparation minimale (sandwich, salade préparée, yaourt + fruits, etc.) plutôt qu'une recette "
+        "élaborée à cuisiner.\n\n"
         "Réponds avec ce schéma JSON exact:\n"
         '{"suggestions": [{"name": "string", "calories": int, "protein_g": number, "carbs_g": number, '
         '"fat_g": number, "fiber_g": number, "ingredients": ["string", ...], "description": "string court"}]}'
