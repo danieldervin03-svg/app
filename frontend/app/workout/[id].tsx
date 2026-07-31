@@ -73,6 +73,7 @@ export default function WorkoutDetail() {
   const [draftReps, setDraftReps] = useState<number | null>(null);
   const [validateSaving, setValidateSaving] = useState(false);
   const [completing, setCompleting] = useState(false);
+  const [celebrateOpen, setCelebrateOpen] = useState(false);
 
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState<Exercise | null>(null);
@@ -210,7 +211,7 @@ export default function WorkoutDetail() {
 
   const completeSession = () => {
     if (!workout) return;
-    Alert.alert("Terminer et valider la séance", "Marquer cette séance comme terminée ? Elle apparaîtra dans l'historique de \"Mes entraînements\".", [
+    Alert.alert("Terminer l'entraînement", "Marquer cette séance comme terminée ? Elle apparaîtra dans l'historique de \"Mes entraînements\".", [
       { text: "Annuler", style: "cancel" },
       {
         text: "Terminer", style: "default",
@@ -219,13 +220,24 @@ export default function WorkoutDetail() {
           try {
             const res = await api.completeWorkout(workout.id);
             setWorkout(res.workout);
-            router.back();
+            setCelebrateOpen(true);
           } catch {} finally {
             setCompleting(false);
           }
         },
       },
     ]);
+  };
+
+  const stopWorkout = () => {
+    Alert.alert(
+      "Arrêter l'entraînement",
+      "Vous quittez la séance sans la marquer comme terminée. Les exercices déjà validés restent enregistrés, vous pourrez reprendre plus tard.",
+      [
+        { text: "Continuer la séance", style: "cancel" },
+        { text: "Arrêter", style: "destructive", onPress: () => router.back() },
+      ]
+    );
   };
 
   const submitLog = async () => {
@@ -321,6 +333,8 @@ export default function WorkoutDetail() {
     );
   }
 
+  const doneCount = workout.exercises.filter((e) => !!e.last_difficulty).length;
+
   return (
     <SafeAreaView style={styles.container} testID="workout-detail-screen">
       <View style={styles.header}>
@@ -344,7 +358,7 @@ export default function WorkoutDetail() {
 
         <View style={styles.actionsRow}>
           <Button
-            title="Terminer et valider la séance"
+            title="Terminer l'entraînement"
             onPress={completeSession}
             loading={completing}
             testID="workout-log-open"
@@ -361,8 +375,18 @@ export default function WorkoutDetail() {
           </Pressable>
         </View>
 
+        <Pressable onPress={stopWorkout} style={styles.stopBtn} testID="workout-stop">
+          <Ionicons name="stop-circle-outline" size={18} color={colors.error} />
+          <Text style={styles.stopBtnTxt}>{"Arrêter l'entraînement"}</Text>
+        </Pressable>
+
         <View style={styles.sectionRow}>
-          <Text style={styles.sectionH}>Exercices</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+            <Text style={styles.sectionH}>Exercices</Text>
+            <View style={styles.progressBadge}>
+              <Text style={styles.progressBadgeTxt}>{doneCount}/{workout.exercises.length}</Text>
+            </View>
+          </View>
           <Pressable onPress={openAdd} style={styles.addBtn} testID="workout-add-exercise">
             <Ionicons name="add" size={20} color={colors.onBrandPrimary} />
           </Pressable>
@@ -375,16 +399,25 @@ export default function WorkoutDetail() {
             ? DIFFICULTIES.find((d) => d.key === ex.last_difficulty)
             : null;
           const isValidating = validatingExId === ex.id;
+          const isDone = !!ex.last_difficulty;
           return (
-            <View key={ex.id} style={styles.exCard} testID={`exercise-${ex.id}`}>
+            <View
+              key={ex.id}
+              style={[styles.exCard, isDone && styles.exCardDone]}
+              testID={`exercise-${ex.id}`}
+            >
               <View style={styles.exRow}>
-                <Pressable onPress={() => openHistory(ex.name)} style={styles.exIcon} testID={`ex-history-${ex.id}`}>
-                  <Ionicons name="trending-up-outline" size={18} color={colors.onBrandTertiary} />
+                <Pressable onPress={() => openHistory(ex.name)} style={[styles.exIcon, isDone && { backgroundColor: diffMeta!.color + "22" }]} testID={`ex-history-${ex.id}`}>
+                  {isDone ? (
+                    <Ionicons name="checkmark" size={18} color={diffMeta!.color} />
+                  ) : (
+                    <Ionicons name="trending-up-outline" size={18} color={colors.onBrandTertiary} />
+                  )}
                 </Pressable>
                 <View style={{ flex: 1 }}>
                   <View style={styles.exTopRow}>
                     <Pressable onPress={() => openHistory(ex.name)} style={{ flex: 1 }}>
-                      <Text style={styles.exName}>{ex.name}</Text>
+                      <Text style={[styles.exName, isDone && { color: colors.onSurfaceSecondary }]}>{ex.name}</Text>
                     </Pressable>
                     {diffMeta ? (
                       <View style={[styles.diffPill, { backgroundColor: diffMeta.color + "22" }]}>
@@ -437,40 +470,36 @@ export default function WorkoutDetail() {
                     })}
                   </View>
 
-                  {draftDifficulty !== "echec" ? (
-                    <>
-                      <View style={styles.adjustRow}>
-                        <Text style={styles.adjustLabel}>Poids : {draftWeight != null ? `${draftWeight} kg` : "—"}</Text>
-                        <View style={styles.chipRow}>
-                          {[5, 2, 1].map((n) => (
-                            <Pressable key={`-${n}`} onPress={() => bumpWeight(-n)} style={styles.chipMinus} testID={`validate-weight-minus${n}-${ex.id}`}>
-                              <Text style={styles.chipMinusTxt}>-{n} kg</Text>
-                            </Pressable>
-                          ))}
-                          {[1, 2, 5].map((n) => (
-                            <Pressable key={`+${n}`} onPress={() => bumpWeight(n)} style={styles.chip} testID={`validate-weight-plus${n}-${ex.id}`}>
-                              <Text style={styles.chipTxt}>+{n} kg</Text>
-                            </Pressable>
-                          ))}
-                        </View>
-                      </View>
-                      <View style={styles.adjustRow}>
-                        <Text style={styles.adjustLabel}>Reps : {draftReps != null ? draftReps : "—"}</Text>
-                        <View style={styles.chipRow}>
-                          {[5, 2, 1].map((n) => (
-                            <Pressable key={`-${n}`} onPress={() => bumpReps(-n)} style={styles.chipMinus} testID={`validate-reps-minus${n}-${ex.id}`}>
-                              <Text style={styles.chipMinusTxt}>-{n}</Text>
-                            </Pressable>
-                          ))}
-                          {[1, 2, 5].map((n) => (
-                            <Pressable key={`+${n}`} onPress={() => bumpReps(n)} style={styles.chip} testID={`validate-reps-plus${n}-${ex.id}`}>
-                              <Text style={styles.chipTxt}>+{n}</Text>
-                            </Pressable>
-                          ))}
-                        </View>
-                      </View>
-                    </>
-                  ) : null}
+                  <View style={styles.adjustRow}>
+                    <Text style={styles.adjustLabel}>Poids : {draftWeight != null ? `${draftWeight} kg` : "—"}</Text>
+                    <View style={styles.chipRow}>
+                      {[5, 2, 1].map((n) => (
+                        <Pressable key={`-${n}`} onPress={() => bumpWeight(-n)} style={styles.chipMinus} testID={`validate-weight-minus${n}-${ex.id}`}>
+                          <Text style={styles.chipMinusTxt}>-{n} kg</Text>
+                        </Pressable>
+                      ))}
+                      {[1, 2, 5].map((n) => (
+                        <Pressable key={`+${n}`} onPress={() => bumpWeight(n)} style={styles.chip} testID={`validate-weight-plus${n}-${ex.id}`}>
+                          <Text style={styles.chipTxt}>+{n} kg</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </View>
+                  <View style={styles.adjustRow}>
+                    <Text style={styles.adjustLabel}>Reps : {draftReps != null ? draftReps : "—"}</Text>
+                    <View style={styles.chipRow}>
+                      {[5, 2, 1].map((n) => (
+                        <Pressable key={`-${n}`} onPress={() => bumpReps(-n)} style={styles.chipMinus} testID={`validate-reps-minus${n}-${ex.id}`}>
+                          <Text style={styles.chipMinusTxt}>-{n}</Text>
+                        </Pressable>
+                      ))}
+                      {[1, 2, 5].map((n) => (
+                        <Pressable key={`+${n}`} onPress={() => bumpReps(n)} style={styles.chip} testID={`validate-reps-plus${n}-${ex.id}`}>
+                          <Text style={styles.chipTxt}>+{n}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </View>
 
                   <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm }}>
                     <Pressable onPress={cancelValidate} style={styles.cancelBtn} testID={`validate-cancel-${ex.id}`}>
@@ -732,11 +761,55 @@ export default function WorkoutDetail() {
           </View>
         </View>
       </Modal>
+
+      <Modal visible={celebrateOpen} transparent animationType="fade" onRequestClose={() => setCelebrateOpen(false)}>
+        <View style={styles.celebrateBg}>
+          <View style={styles.celebrateCard}>
+            <Text style={styles.celebrateEmoji}>🎉</Text>
+            <Text style={styles.celebrateTitle}>Bravo, séance terminée !</Text>
+            <Text style={styles.celebrateSub}>{workout?.title}</Text>
+            {workout ? (
+              <View style={styles.celebrateStatsRow}>
+                {(["reussi", "facile", "echec"] as const).map((k) => {
+                  const count = workout.exercises.filter((e) => e.last_difficulty === k).length;
+                  if (count === 0) return null;
+                  const meta = DIFFICULTIES.find((d) => d.key === k)!;
+                  return (
+                    <View key={k} style={styles.celebrateStat}>
+                      <Ionicons name={meta.icon} size={16} color={meta.color} />
+                      <Text style={[styles.celebrateStatTxt, { color: meta.color }]}>{count}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null}
+            <Text style={styles.celebrateMsg}>Continue comme ça, tu progresses ! 💪</Text>
+            <Button
+              title="Retour"
+              onPress={() => { setCelebrateOpen(false); router.back(); }}
+              style={{ marginTop: spacing.md, width: "100%" }}
+              testID="celebrate-close"
+            />
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  celebrateBg: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center", padding: spacing.xl },
+  celebrateCard: {
+    backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.xl,
+    alignItems: "center", width: "100%",
+  },
+  celebrateEmoji: { fontSize: 56, marginBottom: spacing.sm },
+  celebrateTitle: { fontSize: font.xl, color: colors.onSurface, fontWeight: "700", textAlign: "center" },
+  celebrateSub: { fontSize: font.base, color: colors.onSurfaceSecondary, marginTop: 4, textAlign: "center" },
+  celebrateStatsRow: { flexDirection: "row", gap: spacing.lg, marginTop: spacing.lg },
+  celebrateStat: { flexDirection: "row", alignItems: "center", gap: 4 },
+  celebrateStatTxt: { fontSize: font.lg, fontWeight: "700" },
+  celebrateMsg: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginTop: spacing.lg, textAlign: "center" },
   container: { flex: 1, backgroundColor: colors.surface },
   header: {
     flexDirection: "row", alignItems: "center", gap: spacing.sm,
@@ -749,6 +822,13 @@ const styles = StyleSheet.create({
   desc: { fontSize: font.base, color: colors.onSurfaceSecondary, marginBottom: spacing.sm },
   meta: { fontSize: font.sm, color: colors.onSurfaceTertiary, marginBottom: spacing.lg },
   actionsRow: { flexDirection: "row", gap: spacing.md, marginBottom: spacing.lg },
+  stopBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm,
+    paddingVertical: spacing.sm, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.error, backgroundColor: "#FEF2F2",
+    marginBottom: spacing.lg,
+  },
+  stopBtnTxt: { color: colors.error, fontSize: font.sm, fontWeight: "600" },
   coachBtn: {
     flexDirection: "row", alignItems: "center", gap: 6,
     backgroundColor: colors.brandPrimary,
@@ -764,8 +844,21 @@ const styles = StyleSheet.create({
   },
   exCard: {
     backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, marginBottom: spacing.sm,
-    padding: spacing.md,
+    padding: spacing.md, borderWidth: 1.5, borderColor: "transparent",
   },
+  exCardDone: { opacity: 0.6 },
+  exCardNext: { borderColor: colors.brandPrimary, backgroundColor: colors.surface },
+  progressBadge: {
+    backgroundColor: colors.brandTertiary, borderRadius: radius.pill,
+    paddingHorizontal: spacing.sm, paddingVertical: 2,
+  },
+  progressBadgeTxt: { fontSize: 12, color: colors.onBrandTertiary, fontWeight: "600" },
+  nextBadge: {
+    flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start",
+    backgroundColor: colors.brandPrimary, borderRadius: radius.pill,
+    paddingHorizontal: spacing.sm, paddingVertical: 3, marginBottom: spacing.sm,
+  },
+  nextBadgeTxt: { fontSize: 11, color: colors.onBrandPrimary, fontWeight: "600" },
   exRow: {
     flexDirection: "row", alignItems: "flex-start", gap: spacing.sm,
     minHeight: 56,

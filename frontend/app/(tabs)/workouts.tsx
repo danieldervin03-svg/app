@@ -4,9 +4,54 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import Svg, { Path, Circle, Line, Text as SvgText } from "react-native-svg";
 import { colors, font, radius, spacing } from "@/src/theme";
 import { EmptyState } from "@/src/components/ui";
-import { api, Workout } from "@/src/api";
+import { api, Workout, ExerciseHistoryPoint } from "@/src/api";
+
+type MyExercise = {
+  name: string;
+  points: ExerciseHistoryPoint[];
+  sessions_count: number;
+  latest_weight_kg: number | null;
+  latest_reps_done: number | null;
+  last_performed_at: string | null;
+};
+
+type ChartPoint = { x: number; y: number };
+
+function smoothPath(points: ChartPoint[]): string {
+  if (points.length === 0) return "";
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+  let d = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i];
+    const p1 = points[i + 1];
+    const midX = (p0.x + p1.x) / 2;
+    d += ` C ${midX} ${p0.y}, ${midX} ${p1.y}, ${p1.x} ${p1.y}`;
+  }
+  return d;
+}
+
+function buildXY(
+  points: { reps: number; weight: number }[],
+  drawW: number,
+  drawH: number,
+): { chartPoints: ChartPoint[]; xMin: number; xMax: number; yMin: number; yMax: number } {
+  const xs = points.map((p) => p.reps);
+  const ys = points.map((p) => p.weight);
+  const xMin = Math.min(...xs);
+  const xMax = Math.max(...xs);
+  const yMin = Math.min(...ys);
+  const yMax = Math.max(...ys);
+  const xRange = Math.max(1, xMax - xMin);
+  const yRange = Math.max(0.5, yMax - yMin);
+  const chartPoints = points.map((p) => ({
+    x: ((p.reps - xMin) / xRange) * drawW,
+    y: drawH - ((p.weight - yMin) / yRange) * drawH,
+  }));
+  return { chartPoints, xMin, xMax, yMin, yMax };
+}
 
 type HistorySession = {
   id: string;
@@ -45,9 +90,11 @@ export default function WorkoutsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const [view, setView] = useState<"home" | "start" | "mine">("home");
+  const [view, setView] = useState<"home" | "start" | "mine" | "exercises">("home");
   const [mineTab, setMineTab] = useState<"programs" | "history">("programs");
   const [history, setHistory] = useState<HistorySession[]>([]);
+  const [myExercises, setMyExercises] = useState<MyExercise[]>([]);
+  const [exercisesLoading, setExercisesLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
 
   const load = useCallback(async () => {
@@ -79,6 +126,20 @@ export default function WorkoutsScreen() {
   useEffect(() => {
     if (view === "mine" && mineTab === "history") loadHistory();
   }, [view, mineTab, loadHistory]);
+
+  const loadExercises = useCallback(async () => {
+    setExercisesLoading(true);
+    try {
+      const res = await api.myExercises();
+      setMyExercises(res.exercises);
+    } catch {} finally {
+      setExercisesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (view === "exercises") loadExercises();
+  }, [view, loadExercises]);
 
   const renderWorkoutCard = (item: Workout) => (
     <Pressable
@@ -146,6 +207,72 @@ export default function WorkoutsScreen() {
     );
   };
 
+  const renderExerciseCard = (ex: MyExercise) => {
+    const rawPoints = ex.points
+      .filter((p) => p.weight_kg != null && p.reps_done != null)
+      .map((p) => ({ reps: p.reps_done as number, weight: p.weight_kg as number }))
+      .sort((a, b) => a.reps - b.reps);
+
+    const CARD_PAD = spacing.lg;
+    const LEFT_AXIS_W = 34;
+    const BOTTOM_AXIS_H = 18;
+    const CHART_W = 260;
+    const CHART_H = 90;
+    const drawW = CHART_W - LEFT_AXIS_W;
+    const drawH = CHART_H - BOTTOM_AXIS_H;
+
+    let chartInfo: ReturnType<typeof buildXY> | null = null;
+    if (rawPoints.length >= 2) {
+      chartInfo = buildXY(rawPoints, drawW, drawH);
+    }
+
+    return (
+      <View style={styles.exerciseCard} testID={`my-exercise-${ex.name}`}>
+        <Text style={styles.exerciseCardName}>{ex.name}</Text>
+        <Text style={styles.exerciseCardCount}>{ex.sessions_count} séance{ex.sessions_count > 1 ? "s" : ""}</Text>
+        <View style={styles.exerciseCardStatsRow}>
+          {ex.latest_weight_kg != null ? (
+            <Text style={styles.exerciseCardStat}>💪 {ex.latest_weight_kg} kg</Text>
+          ) : null}
+          {ex.latest_reps_done != null ? (
+            <Text style={styles.exerciseCardStat}>🔁 {ex.latest_reps_done} reps</Text>
+          ) : null}
+        </View>
+        {chartInfo ? (
+          <Svg width="100%" height={CHART_H} viewBox={`0 0 ${CHART_W} ${CHART_H}`} style={{ marginTop: spacing.sm }}>
+            {/* Axes */}
+            <Line x1={LEFT_AXIS_W} y1={0} x2={LEFT_AXIS_W} y2={drawH} stroke={colors.divider} strokeWidth={1} />
+            <Line x1={LEFT_AXIS_W} y1={drawH} x2={CHART_W} y2={drawH} stroke={colors.divider} strokeWidth={1} />
+            {/* Y axis labels (weight) */}
+            <SvgText x={LEFT_AXIS_W - 4} y={8} fontSize={9} fill={colors.onSurfaceSecondary} textAnchor="end">
+              {Math.round(chartInfo.yMax)}
+            </SvgText>
+            <SvgText x={LEFT_AXIS_W - 4} y={drawH} fontSize={9} fill={colors.onSurfaceSecondary} textAnchor="end">
+              {Math.round(chartInfo.yMin)}kg
+            </SvgText>
+            {/* X axis labels (reps) */}
+            <SvgText x={LEFT_AXIS_W} y={CHART_H - 2} fontSize={9} fill={colors.onSurfaceSecondary} textAnchor="start">
+              {chartInfo.xMin}
+            </SvgText>
+            <SvgText x={CHART_W} y={CHART_H - 2} fontSize={9} fill={colors.onSurfaceSecondary} textAnchor="end">
+              {chartInfo.xMax} reps
+            </SvgText>
+            {/* Curve, offset by the left axis width */}
+            <Path
+              d={smoothPath(chartInfo.chartPoints.map((p) => ({ x: p.x + LEFT_AXIS_W, y: p.y })))}
+              stroke="#0891B2" strokeWidth={2.5} fill="none"
+            />
+            {chartInfo.chartPoints.map((p, i) => (
+              <Circle key={i} cx={p.x + LEFT_AXIS_W} cy={p.y} r={3} fill="#0891B2" />
+            ))}
+          </Svg>
+        ) : (
+          <Text style={styles.exerciseCardNoData}>Pas encore assez de données pour une courbe</Text>
+        )}
+      </View>
+    );
+  };
+
   return (
     <LinearGradient colors={[colors.brandTertiary, colors.surface]} style={{ flex: 1 }}>
       <SafeAreaView style={styles.container} testID="workouts-screen">
@@ -156,7 +283,7 @@ export default function WorkoutsScreen() {
             </Pressable>
           ) : null}
           <Text style={styles.title}>
-            {view === "home" ? "Entraînements" : view === "start" ? "Démarrer" : "Mes entraînements"}
+            {view === "home" ? "Entraînements" : view === "start" ? "Démarrer" : view === "exercises" ? "Mes exercices" : "Mes entraînements"}
           </Text>
           {view === "mine" && mineTab === "programs" ? (
             <View style={{ flexDirection: "row", gap: spacing.sm }}>
@@ -197,7 +324,33 @@ export default function WorkoutsScreen() {
               <Text style={styles.homeCardTitle}>Mes entraînements</Text>
               <Text style={styles.homeCardSub}>Vos programmes et l'historique de vos séances</Text>
             </Pressable>
+            <Pressable style={styles.homeCard} onPress={() => setView("exercises")} testID="workouts-go-exercises">
+              <View style={[styles.homeIconWrap, { backgroundColor: "#0891B2" }]}>
+                <Ionicons name="trending-up" size={26} color={colors.onBrandPrimary} />
+              </View>
+              <Text style={styles.homeCardTitle}>Mes exercices</Text>
+              <Text style={styles.homeCardSub}>La progression de chaque exercice, en courbe</Text>
+            </Pressable>
           </View>
+        ) : view === "exercises" ? (
+          exercisesLoading ? (
+            <ActivityIndicator color={colors.brandPrimary} style={{ marginTop: spacing.xxl }} />
+          ) : myExercises.length === 0 ? (
+            <EmptyState
+              title="Aucun exercice validé"
+              subtitle="Validez des exercices pendant vos séances pour voir leur progression ici."
+              testID="exercises-empty"
+            />
+          ) : (
+            <FlatList
+              data={myExercises}
+              keyExtractor={(e) => e.name}
+              contentContainerStyle={styles.list}
+              refreshControl={<RefreshControl refreshing={exercisesLoading} onRefresh={loadExercises} tintColor={colors.brandPrimary} />}
+              ItemSeparatorComponent={() => <View style={{ height: spacing.md }} />}
+              renderItem={({ item }) => renderExerciseCard(item)}
+            />
+          )
         ) : view === "start" ? (
           loading ? (
             <ActivityIndicator color={colors.brandPrimary} style={{ marginTop: spacing.xxl }} />
@@ -398,4 +551,14 @@ const styles = StyleSheet.create({
   },
   historyExName: { fontSize: font.sm, color: colors.onSurface, flex: 1, marginRight: spacing.sm },
   historyExVal: { fontSize: font.sm, color: colors.onSurfaceSecondary },
+  exerciseCard: {
+    backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.lg,
+    borderWidth: 1, borderColor: colors.divider,
+  },
+  exerciseCardHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  exerciseCardName: { fontSize: font.xl, color: colors.brandPrimary, fontWeight: "700" },
+  exerciseCardCount: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginTop: 2 },
+  exerciseCardStatsRow: { flexDirection: "row", gap: spacing.md, marginTop: 4 },
+  exerciseCardStat: { fontSize: font.sm, color: colors.onSurface },
+  exerciseCardNoData: { fontSize: font.sm, color: colors.onSurfaceTertiary, marginTop: spacing.sm, fontStyle: "italic" },
 });

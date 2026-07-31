@@ -402,6 +402,17 @@ export const api = {
     request<{ exercise_name: string; points: ExerciseHistoryPoint[] }>(
       `/exercises/history?name=${encodeURIComponent(name)}`,
     ),
+  myExercises: () =>
+    request<{
+      exercises: {
+        name: string;
+        points: ExerciseHistoryPoint[];
+        sessions_count: number;
+        latest_weight_kg: number | null;
+        latest_reps_done: number | null;
+        last_performed_at: string | null;
+      }[];
+    }>("/exercises/my-list"),
 
   // Coach
   coachMessages: (workoutId?: string) =>

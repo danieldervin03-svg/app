@@ -1032,6 +1032,54 @@ async def workout_logs(workout_id: str, user: dict = Depends(get_current_user)):
     return items
 
 
+@api.get("/exercises/my-list")
+async def my_exercises(user: dict = Depends(get_current_user)):
+    """All distinct exercises the user has ever validated, each with its full
+    chronological history (for progress curves), most recently trained first."""
+    workouts = await db.workouts.find({"user_id": user["id"]}, {"_id": 0}).to_list(500)
+    # exercise_id -> display name (normalized key used to group same-name exercises
+    # across different workout templates)
+    id_to_name: dict = {}
+    for w in workouts:
+        for e in w.get("exercises", []):
+            id_to_name[e["id"]] = e.get("name", "Exercice")
+
+    logs = await db.session_logs.find(
+        {"user_id": user["id"]}, {"_id": 0}
+    ).sort("performed_at", 1).to_list(2000)
+
+    groups: dict = {}  # normalized name -> {"display_name": str, "points": [...]}
+    for lg in logs:
+        for entry in lg.get("entries", []):
+            name = id_to_name.get(entry.get("exercise_id"))
+            if not name:
+                continue
+            key = name.strip().lower()
+            g = groups.setdefault(key, {"display_name": name, "points": []})
+            g["points"].append({
+                "performed_at": lg["performed_at"],
+                "weight_kg": entry.get("weight_kg"),
+                "reps_done": entry.get("reps_done"),
+                "difficulty": entry.get("difficulty"),
+            })
+
+    exercises = []
+    for g in groups.values():
+        points = g["points"]
+        last_weight = next((p["weight_kg"] for p in reversed(points) if p["weight_kg"] is not None), None)
+        last_reps = next((p["reps_done"] for p in reversed(points) if p["reps_done"] is not None), None)
+        exercises.append({
+            "name": g["display_name"],
+            "points": points,
+            "sessions_count": len(points),
+            "latest_weight_kg": last_weight,
+            "latest_reps_done": last_reps,
+            "last_performed_at": points[-1]["performed_at"] if points else None,
+        })
+    exercises.sort(key=lambda e: e["last_performed_at"] or "", reverse=True)
+    return {"exercises": exercises}
+
+
 @api.get("/exercises/history")
 async def exercise_history(name: str, user: dict = Depends(get_current_user)):
     """Return chronological history for a given exercise name across all workouts."""
