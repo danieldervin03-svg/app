@@ -1267,6 +1267,8 @@ async def suggest_meals(body: MealSuggestInput, user: dict = Depends(get_current
         max_tokens=2000, model=ANTHROPIC_MODEL_VISION,
     )
     suggestions = data.get("suggestions", [])[:3]
+    if not suggestions:
+        logger.warning("suggest_meals: 0 suggestions extraites. Clés reçues: %s | data=%s", list(data.keys()), str(data)[:800])
     cleaned = []
     for s in suggestions:
         cleaned.append({
