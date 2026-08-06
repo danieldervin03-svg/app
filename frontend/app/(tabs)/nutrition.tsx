@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from "react";
-import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl, ActivityIndicator, Modal, KeyboardAvoidingView, Platform, ScrollView, Image } from "react-native";
+import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl, ActivityIndicator, Modal, KeyboardAvoidingView, Platform, ScrollView, Image, Dimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -11,6 +11,19 @@ import { api, Meal, MealSuggestion, MenuScanResult, TodaySummary } from "@/src/a
 import { useAuth } from "@/src/auth";
 
 const MEAL_TYPES: Meal["meal_type"][] = ["petit-déjeuner", "déjeuner", "dîner", "collation"];
+
+const SCREEN_H = Dimensions.get("window").height;
+
+const PREF_PRESETS = [
+  "Repas rapide, sans cuisine",
+  "Je suis au supermarché",
+  "Reste du frigo, anti-gaspi",
+  "Végétarien",
+  "Riche en protéines",
+  "Sans gluten",
+  "Repas léger",
+  "Petit budget",
+];
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
@@ -663,7 +676,7 @@ export default function NutritionScreen() {
       <Modal visible={suggestOpen} transparent animationType="slide" onRequestClose={() => setSuggestOpen(false)}>
         <View style={styles.modalBg}>
           <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ width: "100%" }}>
-            <View style={[styles.modalCard, { maxHeight: "85%" }]}>
+            <View style={[styles.modalCard, { maxHeight: SCREEN_H * 0.85 }]}>
               <View style={styles.dragHandle} />
               <Text style={styles.modalTitle}>Idées repas IA</Text>
 
@@ -696,10 +709,24 @@ export default function NutritionScreen() {
                 onChangeText={setSuggestPref}
                 testID="meal-ai-preferences-input"
               />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.md }}>
+                <View style={{ flexDirection: "row", gap: spacing.sm }}>
+                  {PREF_PRESETS.map((p) => (
+                    <Pressable
+                      key={p}
+                      onPress={() => setSuggestPref((prev) => (prev === p ? "" : p))}
+                      style={[styles.chip, suggestPref === p && styles.chipActive]}
+                      testID={`meal-ai-preset-${p}`}
+                    >
+                      <Text style={[styles.chipTxt, suggestPref === p && styles.chipTxtActive]}>{p}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </ScrollView>
               <Button title="Générer" onPress={runSuggest} loading={suggestLoading} testID="meal-ai-generate" />
               {suggestError ? <Text style={{ color: colors.error, textAlign: "center", marginTop: spacing.sm }}>{suggestError}</Text> : null}
 
-              <ScrollView style={{ marginTop: spacing.md }}>
+              <ScrollView style={{ marginTop: spacing.md, flex: 1 }}>
                 {suggestions.map((s, i) => (
                   <View key={i} style={styles.sugCard} testID={`meal-suggestion-${i}`}>
                     <Text style={styles.sugName}>{s.name}</Text>
@@ -838,7 +865,7 @@ export default function NutritionScreen() {
       {/* Daily nutrition history modal */}
       <Modal visible={historyOpen} transparent animationType="slide" onRequestClose={() => setHistoryOpen(false)}>
         <View style={styles.modalBg}>
-          <View style={[styles.modalCard, { maxHeight: "85%" }]}>
+          <View style={[styles.modalCard, { maxHeight: SCREEN_H * 0.85 }]}>
             <View style={styles.dragHandle} />
             <Text style={styles.modalTitle}>Historique alimentaire</Text>
             {historyLoading ? (
