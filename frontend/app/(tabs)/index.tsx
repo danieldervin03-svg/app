@@ -120,28 +120,6 @@ export default function HomeScreen() {
           </View>
         </LinearGradient>
 
-        {coachChatSummary?.has_coach ? (
-          <Pressable onPress={() => router.push("/my-coach-chat" as any)} style={styles.coachCard} testID="home-coach-chat-card">
-            <View style={styles.coachIconWrap}>
-              <Ionicons name="chatbubble-ellipses" size={20} color={colors.onBrandPrimary} />
-              {coachChatSummary.unread_count > 0 ? (
-                <View style={styles.unreadDot}>
-                  <Text style={styles.unreadDotTxt}>{coachChatSummary.unread_count}</Text>
-                </View>
-              ) : null}
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.coachCardTitle}>{user?.coach_name ?? "Mon coach"}</Text>
-              <Text style={styles.coachCardMsg} numberOfLines={1}>
-                {coachChatSummary.latest
-                  ? `${coachChatSummary.latest.sender_role === "user" ? "Vous : " : ""}${coachChatSummary.latest.content}`
-                  : "Démarrer la conversation"}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceSecondary} />
-          </Pressable>
-        ) : null}
-
         <Pressable
           onPress={() => (summary?.next_workout ? router.push(`/workout/${summary.next_workout.id}` as any) : router.push("/(tabs)/workouts"))}
           testID="home-next-workout"
@@ -213,6 +191,28 @@ export default function HomeScreen() {
             <Text style={styles.quickTxt}>Parler au Coach IA</Text>
           </Pressable>
         </View>
+
+        {coachChatSummary?.has_coach ? (
+          <Pressable onPress={() => router.push("/my-coach-chat" as any)} style={styles.coachCard} testID="home-coach-chat-card">
+            <View style={styles.coachIconWrap}>
+              <Ionicons name="chatbubble-ellipses" size={20} color={colors.onBrandPrimary} />
+              {coachChatSummary.unread_count > 0 ? (
+                <View style={styles.unreadDot}>
+                  <Text style={styles.unreadDotTxt}>{coachChatSummary.unread_count}</Text>
+                </View>
+              ) : null}
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.coachCardTitle}>{user?.coach_name ?? "Mon coach"}</Text>
+              <Text style={styles.coachCardMsg} numberOfLines={1}>
+                {coachChatSummary.latest
+                  ? `${coachChatSummary.latest.sender_role === "user" ? "Vous : " : ""}${coachChatSummary.latest.content}`
+                  : "Démarrer la conversation"}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceSecondary} />
+          </Pressable>
+        ) : null}
       </ScrollView>
 
       <CoachChat visible={coachOpen} onClose={() => setCoachOpen(false)} />
