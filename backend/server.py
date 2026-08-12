@@ -651,7 +651,7 @@ async def student_today(student_id: str, coach: dict = Depends(get_current_coach
         {"user_id": student_id, "performed_at": {"$regex": f"^{today}"}}, {"_id": 0}
     ).to_list(50)
     validated_today_ids = {lg["workout_id"] for lg in todays_logs}
-    completed_today = [w for w in workouts if w.get("performed_at", "").startswith(today)]
+    completed_today = [w for w in workouts if (w.get("performed_at") or "").startswith(today)]
     in_progress_today = [w for w in workouts if w["id"] in validated_today_ids and w["id"] not in {w2["id"] for w2 in completed_today}]
 
     return {
