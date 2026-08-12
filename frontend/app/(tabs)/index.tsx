@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, RefreshControl, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -19,6 +19,14 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [coachOpen, setCoachOpen] = useState(false);
   const [coachChatSummary, setCoachChatSummary] = useState<{ has_coach: boolean; latest: { content: string; sender_role: string; created_at: string } | null; unread_count: number } | null>(null);
+
+  // Safety net: coach accounts should never land on this screen, no matter how
+  // they got here (restored navigation state, deep link, etc).
+  useEffect(() => {
+    if (user?.role === "coach") {
+      router.replace("/(tabs)/students" as any);
+    }
+  }, [user?.role, router]);
 
   const load = useCallback(async () => {
     try {
@@ -47,6 +55,10 @@ export default function HomeScreen() {
   const percent = Math.min(1, consumed / Math.max(1, goal));
 
   const today = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+
+  if (user?.role === "coach") {
+    return <View style={{ flex: 1, backgroundColor: colors.surface }} />;
+  }
 
   return (
     <LinearGradient colors={[colors.brandTertiary, colors.surface]} style={{ flex: 1 }}>
