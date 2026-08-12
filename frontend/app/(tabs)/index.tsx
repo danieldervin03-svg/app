@@ -18,13 +18,20 @@ export default function HomeScreen() {
   const [summary, setSummary] = useState<TodaySummary | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [coachOpen, setCoachOpen] = useState(false);
+  const [coachChatSummary, setCoachChatSummary] = useState<{ has_coach: boolean; latest: { content: string; sender_role: string; created_at: string } | null; unread_count: number } | null>(null);
 
   const load = useCallback(async () => {
     try {
       const s = await api.summaryToday();
       setSummary(s);
     } catch {}
-  }, []);
+    if (user?.coach_id) {
+      try {
+        const c = await api.myCoachChatSummary();
+        setCoachChatSummary(c);
+      } catch {}
+    }
+  }, [user?.coach_id]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -112,6 +119,28 @@ export default function HomeScreen() {
           </View>
           </View>
         </LinearGradient>
+
+        {coachChatSummary?.has_coach ? (
+          <Pressable onPress={() => router.push("/my-coach-chat" as any)} style={styles.coachCard} testID="home-coach-chat-card">
+            <View style={styles.coachIconWrap}>
+              <Ionicons name="chatbubble-ellipses" size={20} color={colors.onBrandPrimary} />
+              {coachChatSummary.unread_count > 0 ? (
+                <View style={styles.unreadDot}>
+                  <Text style={styles.unreadDotTxt}>{coachChatSummary.unread_count}</Text>
+                </View>
+              ) : null}
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.coachCardTitle}>{user?.coach_name ?? "Mon coach"}</Text>
+              <Text style={styles.coachCardMsg} numberOfLines={1}>
+                {coachChatSummary.latest
+                  ? `${coachChatSummary.latest.sender_role === "user" ? "Vous : " : ""}${coachChatSummary.latest.content}`
+                  : "Démarrer la conversation"}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceSecondary} />
+          </Pressable>
+        ) : null}
 
         <Pressable
           onPress={() => (summary?.next_workout ? router.push(`/workout/${summary.next_workout.id}` as any) : router.push("/(tabs)/workouts"))}
@@ -223,6 +252,22 @@ const styles = StyleSheet.create({
   macroLabel: { fontSize: font.sm, color: "rgba(255,255,255,0.85)", marginBottom: 6 },
   macroBarTrack: { height: 5, backgroundColor: "rgba(255,255,255,0.3)", borderRadius: radius.pill, overflow: "hidden" },
   macroBarFill: { height: "100%", borderRadius: radius.pill },
+  coachCard: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md,
+    marginTop: spacing.md, borderWidth: 1, borderColor: colors.divider,
+  },
+  coachIconWrap: {
+    width: 40, height: 40, borderRadius: 20, backgroundColor: colors.brandPrimary,
+    alignItems: "center", justifyContent: "center",
+  },
+  unreadDot: {
+    position: "absolute", top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 9,
+    backgroundColor: colors.error, alignItems: "center", justifyContent: "center", paddingHorizontal: 3,
+  },
+  unreadDotTxt: { color: "#FFF", fontSize: 10, fontWeight: "700" },
+  coachCardTitle: { fontSize: font.base, color: colors.onSurface, fontWeight: "600" },
+  coachCardMsg: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginTop: 2 },
   workoutCard: {
     height: 160,
     borderRadius: radius.lg,

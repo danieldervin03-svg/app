@@ -11,7 +11,7 @@ import { useAuth } from "@/src/auth";
 
 type Student = {
   id: string; name: string; email: string; calorie_goal: number;
-  meals_today: number; linked_since: string;
+  meals_today: number; linked_since: string; unread_count: number;
 };
 
 export default function StudentsScreen() {
@@ -96,6 +96,11 @@ export default function StudentsScreen() {
             >
               <View style={styles.avatar}>
                 <Text style={styles.avatarTxt}>{item.name.charAt(0).toUpperCase()}</Text>
+                {item.unread_count > 0 ? (
+                  <View style={styles.unreadBadge}>
+                    <Text style={styles.unreadBadgeTxt}>{item.unread_count}</Text>
+                  </View>
+                ) : null}
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.cardName}>{item.name}</Text>
@@ -151,9 +156,14 @@ const styles = StyleSheet.create({
   },
   avatar: {
     width: 44, height: 44, borderRadius: 22, backgroundColor: colors.brandPrimary,
-    alignItems: "center", justifyContent: "center",
+    alignItems: "center", justifyContent: "center", position: "relative",
   },
   avatarTxt: { color: colors.onBrandPrimary, fontSize: font.lg, fontWeight: "600" },
+  unreadBadge: {
+    position: "absolute", top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 9,
+    backgroundColor: colors.error, alignItems: "center", justifyContent: "center", paddingHorizontal: 3,
+  },
+  unreadBadgeTxt: { color: "#FFF", fontSize: 10, fontWeight: "700" },
   cardName: { fontSize: font.lg, color: colors.onSurface, fontWeight: "500" },
   cardSub: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginTop: 2 },
   removeBtn: { padding: 4 },

@@ -454,7 +454,7 @@ export const api = {
     request<{
       students: {
         id: string; name: string; email: string; calorie_goal: number;
-        meals_today: number; linked_since: string;
+        meals_today: number; linked_since: string; unread_count: number;
       }[];
     }>("/coach/students"),
   coachRemoveStudent: (studentId: string) =>
@@ -516,6 +516,8 @@ export const api = {
   coachSendChatToStudent: (studentId: string, content: string) =>
     request<StudentMessage>(`/coach/students/${studentId}/chat`, { method: "POST", body: { content } }),
   myCoachChat: () => request<{ messages: StudentMessage[] }>("/my-coach/chat"),
+  myCoachChatSummary: () =>
+    request<{ has_coach: boolean; latest: StudentMessage | null; unread_count: number }>("/my-coach/chat/summary"),
   sendToMyCoach: (content: string) =>
     request<StudentMessage>("/my-coach/chat", { method: "POST", body: { content } }),
 };

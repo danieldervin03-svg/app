@@ -611,6 +611,9 @@ async def list_students(coach: dict = Depends(get_current_coach)):
     results = []
     for s in students:
         meals_today = await db.meals.count_documents({"user_id": s["id"], "date": today})
+        unread_count = await db.coach_student_messages.count_documents(
+            {"coach_id": coach["id"], "student_id": s["id"], "sender_role": "user", "read": False}
+        )
         results.append({
             "id": s["id"],
             "name": s["name"],
@@ -618,6 +621,7 @@ async def list_students(coach: dict = Depends(get_current_coach)):
             "calorie_goal": s.get("calorie_goal", 2000),
             "meals_today": meals_today,
             "linked_since": s.get("created_at"),
+            "unread_count": unread_count,
         })
     return {"students": results}
 
@@ -807,6 +811,10 @@ async def coach_get_chat(student_id: str, coach: dict = Depends(get_current_coac
     msgs = await db.coach_student_messages.find(
         {"coach_id": coach["id"], "student_id": student_id}, {"_id": 0}
     ).sort("created_at", 1).to_list(500)
+    await db.coach_student_messages.update_many(
+        {"coach_id": coach["id"], "student_id": student_id, "sender_role": "user", "read": False},
+        {"$set": {"read": True}},
+    )
     return {"messages": [_student_message_public(m) for m in msgs]}
 
 
@@ -815,7 +823,7 @@ async def coach_send_chat(student_id: str, body: StudentMessageInput, coach: dic
     await _get_owned_student(student_id, coach)
     msg = {
         "id": new_id(), "coach_id": coach["id"], "student_id": student_id,
-        "sender_role": "coach", "content": body.content.strip(), "created_at": now_utc(),
+        "sender_role": "coach", "content": body.content.strip(), "created_at": now_utc(), "read": False,
     }
     await db.coach_student_messages.insert_one(msg)
     return _student_message_public(msg)
@@ -828,7 +836,32 @@ async def student_get_chat(user: dict = Depends(get_current_user)):
     msgs = await db.coach_student_messages.find(
         {"coach_id": user["coach_id"], "student_id": user["id"]}, {"_id": 0}
     ).sort("created_at", 1).to_list(500)
+    await db.coach_student_messages.update_many(
+        {"coach_id": user["coach_id"], "student_id": user["id"], "sender_role": "coach", "read": False},
+        {"$set": {"read": True}},
+    )
     return {"messages": [_student_message_public(m) for m in msgs]}
+
+
+@api.get("/my-coach/chat/summary")
+async def student_chat_summary(user: dict = Depends(get_current_user)):
+    """Lightweight preview for the student's home screen: latest message + unread
+    count, without marking anything as read (that only happens when the chat is
+    actually opened)."""
+    if not user.get("coach_id"):
+        return {"has_coach": False, "latest": None, "unread_count": 0}
+    latest = await db.coach_student_messages.find_one(
+        {"coach_id": user["coach_id"], "student_id": user["id"]}, {"_id": 0},
+        sort=[("created_at", -1)],
+    )
+    unread_count = await db.coach_student_messages.count_documents(
+        {"coach_id": user["coach_id"], "student_id": user["id"], "sender_role": "coach", "read": False}
+    )
+    return {
+        "has_coach": True,
+        "latest": _student_message_public(latest) if latest else None,
+        "unread_count": unread_count,
+    }
 
 
 @api.post("/my-coach/chat")
@@ -837,7 +870,7 @@ async def student_send_chat(body: StudentMessageInput, user: dict = Depends(get_
         raise HTTPException(400, "Aucun coach lié")
     msg = {
         "id": new_id(), "coach_id": user["coach_id"], "student_id": user["id"],
-        "sender_role": "user", "content": body.content.strip(), "created_at": now_utc(),
+        "sender_role": "user", "content": body.content.strip(), "created_at": now_utc(), "read": False,
     }
     await db.coach_student_messages.insert_one(msg)
     return _student_message_public(msg)
