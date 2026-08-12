@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from "react";
 import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl, ActivityIndicator, Modal, KeyboardAvoidingView, Platform, ScrollView, Image, Dimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as ImagePicker from "expo-image-picker";
@@ -30,6 +30,7 @@ function todayStr() {
 }
 
 export default function NutritionScreen() {
+  const router = useRouter();
   const { user } = useAuth();
   const [meals, setMeals] = useState<Meal[]>([]);
   const [summary, setSummary] = useState<TodaySummary | null>(null);
@@ -293,26 +294,20 @@ export default function NutritionScreen() {
     setMeals((prev) => prev.filter((m) => m.id !== id));
   };
 
-  const runSuggest = async () => {
-    setSuggestLoading(true);
-    setSuggestions([]);
-    setSuggestError(null);
-    try {
-      const parsed = parseInt(suggestCalories, 10);
-      const target = Number.isFinite(parsed) && parsed > 0
-        ? parsed
-        : Math.round(goal / (user?.meals_per_day ?? 4));
-      const res = await api.suggestMeals({
-        remaining_calories: Math.max(50, target),
+  const goToSuggestions = () => {
+    const parsed = parseInt(suggestCalories, 10);
+    const target = Number.isFinite(parsed) && parsed > 0
+      ? parsed
+      : Math.round(goal / (user?.meals_per_day ?? 4));
+    setSuggestOpen(false);
+    router.push({
+      pathname: "/meal-suggestions",
+      params: {
         meal_type: suggestType,
+        calories: String(Math.max(50, target)),
         preferences: suggestPref,
-      });
-      setSuggestions(res.suggestions);
-    } catch (e: any) {
-      setSuggestError(e.message ?? "Impossible de générer des idées pour le moment, réessayez.");
-    } finally {
-      setSuggestLoading(false);
-    }
+      },
+    });
   };
 
   const addSuggested = async (s: MealSuggestion) => {
@@ -676,7 +671,7 @@ export default function NutritionScreen() {
       <Modal visible={suggestOpen} transparent animationType="slide" onRequestClose={() => setSuggestOpen(false)}>
         <View style={styles.modalBg}>
           <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ width: "100%" }}>
-            <View style={[styles.modalCard, { maxHeight: SCREEN_H * 0.85 }]}>
+            <View style={styles.modalCard}>
               <View style={styles.dragHandle} />
               <Text style={styles.modalTitle}>Idées repas IA</Text>
 
@@ -728,43 +723,7 @@ export default function NutritionScreen() {
                   ))}
                 </View>
               </ScrollView>
-              <Button title="Générer" onPress={runSuggest} loading={suggestLoading} testID="meal-ai-generate" />
-              {suggestError ? <Text style={{ color: colors.error, textAlign: "center", marginTop: spacing.sm }}>{suggestError}</Text> : null}
-
-              <ScrollView style={{ marginTop: spacing.md, flex: 1 }}>
-                {suggestions.map((s, i) => (
-                  <View key={i} style={styles.sugCard} testID={`meal-suggestion-${i}`}>
-                    <Text style={styles.sugName}>{s.name}</Text>
-                    <Text style={styles.sugCal}>
-                      {s.calories} kcal
-                      {s.protein_g != null ? (
-                        <>
-                          <Text style={{ color: colors.onSurfaceSecondary }}> · </Text>
-                          <Text style={{ color: "#FB7185", fontWeight: "600" }}>P {s.protein_g}g</Text>
-                          <Text style={{ color: colors.onSurfaceSecondary }}> · </Text>
-                          <Text style={{ color: "#FBBF24", fontWeight: "600" }}>G {s.carbs_g}g</Text>
-                          <Text style={{ color: colors.onSurfaceSecondary }}> · </Text>
-                          <Text style={{ color: "#60A5FA", fontWeight: "600" }}>L {s.fat_g}g</Text>
-                          {s.fiber_g != null ? (
-                            <>
-                              <Text style={{ color: colors.onSurfaceSecondary }}> · </Text>
-                              <Text style={{ color: "#34D399", fontWeight: "600" }}>F {s.fiber_g}g</Text>
-                            </>
-                          ) : null}
-                        </>
-                      ) : null}
-                    </Text>
-                    <Text style={styles.sugDesc}>{s.description}</Text>
-                    {s.ingredients.length > 0 ? (
-                      <Text style={styles.sugIngr}>Ingrédients : {s.ingredients.join(", ")}</Text>
-                    ) : null}
-                    <Pressable style={styles.addSugBtn} onPress={() => addSuggested(s)} testID={`meal-suggestion-add-${i}`}>
-                      <Ionicons name="add" size={16} color={colors.onBrandPrimary} />
-                      <Text style={{ color: colors.onBrandPrimary, fontSize: font.base }}>Ajouter</Text>
-                    </Pressable>
-                  </View>
-                ))}
-              </ScrollView>
+              <Button title="Générer" onPress={goToSuggestions} testID="meal-ai-generate" />
               <Pressable onPress={() => setSuggestOpen(false)} style={{ alignItems: "center", padding: spacing.md }}>
                 <Text style={{ color: colors.onSurfaceSecondary }}>Fermer</Text>
               </Pressable>
