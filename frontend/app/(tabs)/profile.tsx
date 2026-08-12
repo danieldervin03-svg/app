@@ -223,6 +223,16 @@ export default function ProfileScreen() {
               </View>
               <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceSecondary} />
             </Pressable>
+            <Pressable onPress={() => router.push("/(tabs)/messages" as any)} style={styles.row} testID="profile-goto-messages">
+              <View style={styles.rowIcon}>
+                <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.onBrandTertiary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.rowLabel}>Messages</Text>
+                <Text style={styles.rowValue}>Toutes vos conversations</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceSecondary} />
+            </Pressable>
           </>
         ) : (
           <>

@@ -626,6 +626,33 @@ async def list_students(coach: dict = Depends(get_current_coach)):
     return {"students": results}
 
 
+@api.get("/coach/conversations")
+async def coach_conversations(coach: dict = Depends(get_current_coach)):
+    """All of the coach's students with their latest message + unread count,
+    sorted with the most recently active conversations first — for a single
+    'Messages' inbox screen."""
+    students = await db.users.find(
+        {"coach_id": coach["id"]}, {"_id": 0, "password_hash": 0}
+    ).to_list(500)
+    results = []
+    for s in students:
+        latest = await db.coach_student_messages.find_one(
+            {"coach_id": coach["id"], "student_id": s["id"]}, {"_id": 0},
+            sort=[("created_at", -1)],
+        )
+        unread_count = await db.coach_student_messages.count_documents(
+            {"coach_id": coach["id"], "student_id": s["id"], "sender_role": "user", "read": False}
+        )
+        results.append({
+            "student_id": s["id"],
+            "student_name": s["name"],
+            "latest": _student_message_public(latest) if latest else None,
+            "unread_count": unread_count,
+        })
+    results.sort(key=lambda r: (r["latest"]["created_at"] if r["latest"] else ""), reverse=True)
+    return {"conversations": results}
+
+
 @api.delete("/coach/students/{student_id}")
 async def remove_student(student_id: str, coach: dict = Depends(get_current_coach)):
     await _get_owned_student(student_id, coach)

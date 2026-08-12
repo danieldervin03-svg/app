@@ -457,6 +457,13 @@ export const api = {
         meals_today: number; linked_since: string; unread_count: number;
       }[];
     }>("/coach/students"),
+  coachConversations: () =>
+    request<{
+      conversations: {
+        student_id: string; student_name: string;
+        latest: StudentMessage | null; unread_count: number;
+      }[];
+    }>("/coach/conversations"),
   coachRemoveStudent: (studentId: string) =>
     request<{ ok: boolean }>(`/coach/students/${studentId}`, { method: "DELETE" }),
   coachStudentToday: (studentId: string) =>

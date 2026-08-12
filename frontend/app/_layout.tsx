@@ -28,7 +28,7 @@ function RootGuard() {
     if (!user && !inAuth) {
       router.replace("/(auth)/login");
     } else if (user && (inAuth || !first)) {
-      router.replace("/(tabs)");
+      router.replace(user.role === "coach" ? "/(tabs)/students" : "/(tabs)");
     }
   }, [user, loading, segments, router]);
 
