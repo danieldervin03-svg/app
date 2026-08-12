@@ -210,63 +210,80 @@ export default function ProfileScreen() {
           <Text style={styles.email}>{user?.email}</Text>
         </View>
 
-        <Text style={styles.section}>Profil santé</Text>
-        {!hasProfile ? (
-          <Pressable
-            style={styles.hint}
-            onPress={() => setHealthOpen(true)}
-            testID="profile-health-hint"
-          >
-            <Ionicons name="information-circle" size={20} color={colors.brandPrimary} />
-            <Text style={styles.hintTxt}>
-              Renseignez votre profil pour calculer automatiquement votre besoin calorique quotidien.
-            </Text>
-          </Pressable>
-        ) : null}
+        {user?.role === "coach" ? (
+          <>
+            <Text style={styles.section}>Mon activité</Text>
+            <Pressable onPress={() => router.push("/(tabs)/students" as any)} style={styles.row} testID="profile-goto-students">
+              <View style={styles.rowIcon}>
+                <Ionicons name="people-outline" size={18} color={colors.onBrandTertiary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.rowLabel}>Mes élèves</Text>
+                <Text style={styles.rowValue}>Gérer mes élèves et mon code coach</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.onSurfaceSecondary} />
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <Text style={styles.section}>Profil santé</Text>
+            {!hasProfile ? (
+              <Pressable
+                style={styles.hint}
+                onPress={() => setHealthOpen(true)}
+                testID="profile-health-hint"
+              >
+                <Ionicons name="information-circle" size={20} color={colors.brandPrimary} />
+                <Text style={styles.hintTxt}>
+                  Renseignez votre profil pour calculer automatiquement votre besoin calorique quotidien.
+                </Text>
+              </Pressable>
+            ) : null}
 
-        <Row
-          icon="body-outline"
-          label="Sexe · Âge · Taille · Poids"
-          value={hasProfile ? `${user!.sex} · ${user!.age} ans · ${user!.height_cm} cm · ${user!.weight_kg} kg` : "Non renseigné"}
-          onPress={() => setHealthOpen(true)}
-          testID="profile-health-row"
-        />
-        <Row
-          icon="walk-outline"
-          label="Niveau d'activité"
-          value={user?.activity_level ?? "Non renseigné"}
-          onPress={() => setHealthOpen(true)}
-        />
-        <Row
-          icon="trophy-outline"
-          label="Objectif"
-          value={user?.fitness_goal ?? "Non renseigné"}
-          onPress={() => setHealthOpen(true)}
-        />
+            <Row
+              icon="body-outline"
+              label="Sexe · Âge · Taille · Poids"
+              value={hasProfile ? `${user!.sex} · ${user!.age} ans · ${user!.height_cm} cm · ${user!.weight_kg} kg` : "Non renseigné"}
+              onPress={() => setHealthOpen(true)}
+              testID="profile-health-row"
+            />
+            <Row
+              icon="walk-outline"
+              label="Niveau d'activité"
+              value={user?.activity_level ?? "Non renseigné"}
+              onPress={() => setHealthOpen(true)}
+            />
+            <Row
+              icon="trophy-outline"
+              label="Objectif"
+              value={user?.fitness_goal ?? "Non renseigné"}
+              onPress={() => setHealthOpen(true)}
+            />
 
-        <Text style={styles.section}>Objectif calorique</Text>
-        <Row
-          icon="flame-outline"
-          label={user?.calorie_goal_auto === false ? "Objectif quotidien (manuel)" : "Objectif quotidien (calculé)"}
-          value={`${user?.calorie_goal ?? 2000} kcal`}
-          onPress={() => { setGoal(String(user?.calorie_goal ?? 2000)); setGoalOpen(true); }}
-          testID="profile-goal-row"
-        />
-        <Row
-          icon="restaurant-outline"
-          label="Nombre de repas par jour"
-          value={`${user?.meals_per_day ?? 4} repas · ~${Math.round((user?.calorie_goal ?? 2000) / (user?.meals_per_day ?? 4))} kcal/repas`}
-          onPress={() => setMealsOpen(true)}
-          testID="profile-meals-row"
-        />
-        <Row
-          icon="nutrition-outline"
-          label="Macronutriments"
-          value={isCustomMacros ? "Personnalisés" : "Automatique (selon objectif)"}
-          onPress={() => setMacrosOpen(true)}
-          testID="profile-macros-row"
-        />
-
+            <Text style={styles.section}>Objectif calorique</Text>
+            <Row
+              icon="flame-outline"
+              label={user?.calorie_goal_auto === false ? "Objectif quotidien (manuel)" : "Objectif quotidien (calculé)"}
+              value={`${user?.calorie_goal ?? 2000} kcal`}
+              onPress={() => { setGoal(String(user?.calorie_goal ?? 2000)); setGoalOpen(true); }}
+              testID="profile-goal-row"
+            />
+            <Row
+              icon="restaurant-outline"
+              label="Nombre de repas par jour"
+              value={`${user?.meals_per_day ?? 4} repas · ~${Math.round((user?.calorie_goal ?? 2000) / (user?.meals_per_day ?? 4))} kcal/repas`}
+              onPress={() => setMealsOpen(true)}
+              testID="profile-meals-row"
+            />
+            <Row
+              icon="nutrition-outline"
+              label="Macronutriments"
+              value={isCustomMacros ? "Personnalisés" : "Automatique (selon objectif)"}
+              onPress={() => setMacrosOpen(true)}
+              testID="profile-macros-row"
+            />
+          </>
+        )}
         {user?.role !== "coach" ? (
           <>
             <Text style={styles.section}>Coach</Text>
@@ -321,13 +338,15 @@ export default function ProfileScreen() {
           </>
         ) : null}
 
-        <Text style={styles.section}>Notifications</Text>
-        <View style={styles.row} testID="profile-reminder-row">
-          <View style={styles.rowIcon}>
-            <Ionicons name="notifications-outline" size={18} color={colors.onBrandTertiary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.rowLabel}>Rappel quotidien</Text>
+        {user?.role !== "coach" ? (
+          <>
+            <Text style={styles.section}>Notifications</Text>
+            <View style={styles.row} testID="profile-reminder-row">
+              <View style={styles.rowIcon}>
+                <Ionicons name="notifications-outline" size={18} color={colors.onBrandTertiary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.rowLabel}>Rappel quotidien</Text>
             <Text style={styles.rowValue}>Chaque jour à 18h</Text>
           </View>
           <Switch
@@ -339,6 +358,8 @@ export default function ProfileScreen() {
             testID="profile-reminder-switch"
           />
         </View>
+          </>
+        ) : null}
 
         <Text style={styles.section}>Compte</Text>
         <Row icon="mail-outline" label="Email" value={user?.email} />
