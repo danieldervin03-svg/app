@@ -280,6 +280,10 @@ export const api = {
     request<{ token: string; user: User }>("/auth/register", { method: "POST", body, auth: false }),
   login: (body: { email: string; password: string }) =>
     request<{ token: string; user: User }>("/auth/login", { method: "POST", body, auth: false }),
+  forgotPassword: (email: string) =>
+    request<{ ok: boolean; message: string }>("/auth/forgot-password", { method: "POST", body: { email }, auth: false }),
+  resetPassword: (email: string, code: string, new_password: string) =>
+    request<{ ok: boolean; message: string }>("/auth/reset-password", { method: "POST", body: { email, code, new_password }, auth: false }),
   me: () => request<User>("/auth/me", { timeoutMs: 30000 }),
   updateCalorieGoal: (calorie_goal: number) =>
     request<User>("/user/calorie-goal", { method: "PUT", body: { calorie_goal } }),

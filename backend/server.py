@@ -36,6 +36,31 @@ anthropic_client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
 WORKOUTX_API_KEY = os.environ.get("WORKOUTX_API_KEY", "")
 WORKOUTX_BASE = "https://api.workoutxapp.com"
 
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "noreply@bodypilotapp.fr")
+
+
+async def send_email(to: str, subject: str, html: str) -> bool:
+    """Send an email via Resend's REST API. Returns True on success, logs and
+    returns False on failure (never raises — callers decide how to handle)."""
+    if not RESEND_API_KEY:
+        logger.warning("RESEND_API_KEY not set — skipping email send to %s", to)
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {RESEND_API_KEY}"},
+                json={"from": RESEND_FROM_EMAIL, "to": [to], "subject": subject, "html": html},
+            )
+        if resp.status_code >= 400:
+            logger.error("Resend send failed (%s): %s", resp.status_code, resp.text[:300])
+            return False
+        return True
+    except Exception as e:
+        logger.error("Resend send error: %s", e)
+        return False
+
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
 
@@ -474,6 +499,60 @@ async def login(body: LoginInput):
         raise HTTPException(401, "Email ou mot de passe incorrect")
     token = create_token(user["id"])
     return AuthResponse(token=token, user=public_user(user))
+
+
+class ForgotPasswordInput(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordInput(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=6, max_length=6)
+    new_password: str = Field(min_length=6)
+
+
+RESET_CODE_TTL_MINUTES = 15
+
+
+@api.post("/auth/forgot-password")
+async def forgot_password(body: ForgotPasswordInput):
+    """Always returns a generic success message, whether or not the email is
+    registered — avoids leaking which addresses have an account."""
+    user = await db.users.find_one({"email": body.email.lower()})
+    if user:
+        import random
+        code = "".join(random.choices("0123456789", k=6))
+        expires = (datetime.now(timezone.utc) + timedelta(minutes=RESET_CODE_TTL_MINUTES)).isoformat()
+        await db.users.update_one(
+            {"id": user["id"]},
+            {"$set": {"reset_code": code, "reset_code_expires": expires}},
+        )
+        html = (
+            f"<p>Bonjour {user.get('name', '')},</p>"
+            f"<p>Voici votre code de réinitialisation Bodypilot :</p>"
+            f"<p style='font-size:28px;font-weight:bold;letter-spacing:4px;'>{code}</p>"
+            f"<p>Ce code expire dans {RESET_CODE_TTL_MINUTES} minutes. "
+            f"Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.</p>"
+        )
+        await send_email(user["email"], "Réinitialisation de votre mot de passe Bodypilot", html)
+    return {"ok": True, "message": "Si un compte existe avec cet email, un code a été envoyé."}
+
+
+@api.post("/auth/reset-password")
+async def reset_password(body: ResetPasswordInput):
+    user = await db.users.find_one({"email": body.email.lower()})
+    if not user or not user.get("reset_code"):
+        raise HTTPException(400, "Code invalide ou expiré")
+    if user["reset_code"] != body.code.strip():
+        raise HTTPException(400, "Code invalide ou expiré")
+    expires = user.get("reset_code_expires")
+    if not expires or datetime.now(timezone.utc) > datetime.fromisoformat(expires):
+        raise HTTPException(400, "Code invalide ou expiré")
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"password_hash": hash_password(body.new_password)}, "$unset": {"reset_code": "", "reset_code_expires": ""}},
+    )
+    return {"ok": True, "message": "Mot de passe mis à jour."}
 
 
 @api.get("/auth/me", response_model=UserPublic)

@@ -78,6 +78,9 @@ export default function LoginScreen() {
             onChangeText={setPassword}
             testID="login-password-input"
           />
+          <Pressable onPress={() => router.push("/(auth)/forgot-password")} style={{ alignSelf: "flex-end", marginTop: spacing.xs }} testID="login-forgot-password">
+            <Text style={{ color: colors.brandPrimary, fontSize: font.sm }}>Mot de passe oublié ?</Text>
+          </Pressable>
 
           {error ? <Text style={styles.err} testID="login-error">{error}</Text> : null}
 
