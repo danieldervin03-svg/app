@@ -126,6 +126,10 @@ export type Exercise = {
   last_difficulty?: "facile" | "reussi" | "echec" | null;
   last_weight_kg?: number | null;
   last_reps_done?: number | null;
+  previous_difficulty?: "facile" | "reussi" | "echec" | null;
+  previous_weight_kg?: number | null;
+  previous_reps_done?: number | null;
+  previous_performed_at?: string | null;
 };
 
 export type Workout = {

@@ -440,6 +440,21 @@ export default function WorkoutDetail() {
                     {ex.target_weight_kg ? ` · ${ex.target_weight_kg} kg` : ""}
                     {" · repos "}{ex.rest_seconds}s
                   </Text>
+                  {!isDone && ex.previous_difficulty ? (
+                    (() => {
+                      const prevMeta = DIFFICULTIES.find((d) => d.key === ex.previous_difficulty)!;
+                      return (
+                        <View style={styles.prevRow}>
+                          <Ionicons name={prevMeta.icon} size={12} color={prevMeta.color} />
+                          <Text style={[styles.prevTxt, { color: prevMeta.color }]}>
+                            La dernière fois : {prevMeta.label}
+                            {ex.previous_weight_kg != null ? ` · ${ex.previous_weight_kg} kg` : ""}
+                            {ex.previous_reps_done != null ? ` × ${ex.previous_reps_done}` : ""}
+                          </Text>
+                        </View>
+                      );
+                    })()
+                  ) : null}
                   {ex.notes ? <Text style={styles.exNote}>{ex.notes}</Text> : null}
                 </View>
                 <Pressable onPress={() => openGif(ex.name)} style={styles.miniBtn} testID={`exercise-gif-${ex.id}`}>
@@ -949,6 +964,8 @@ const styles = StyleSheet.create({
   histDiff: { fontSize: font.sm, color: colors.onSurfaceTertiary, textTransform: "capitalize" },
   exSub: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginTop: 2 },
   exNote: { fontSize: font.sm, color: colors.onSurfaceTertiary, marginTop: 4, fontStyle: "italic" },
+  prevRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 },
+  prevTxt: { fontSize: font.sm, fontWeight: "500" },
   miniBtn: { padding: spacing.sm },
   emptyEx: { textAlign: "center", color: colors.onSurfaceSecondary, marginTop: spacing.xl },
   modalBg: { flex: 1, backgroundColor: "rgba(0,0,0,0.35)", justifyContent: "flex-end" },

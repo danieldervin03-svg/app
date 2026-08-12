@@ -195,6 +195,13 @@ class Exercise(BaseModel):
     last_difficulty: Optional[Literal["facile", "reussi", "echec"]] = None
     last_weight_kg: Optional[float] = None
     last_reps_done: Optional[int] = None
+    # Reference info about the last time this exercise was actually validated
+    # (kept even after last_* is reset when a session is completed, so the user
+    # can see how it went last time before doing it again today).
+    previous_difficulty: Optional[Literal["facile", "reussi", "echec"]] = None
+    previous_weight_kg: Optional[float] = None
+    previous_reps_done: Optional[int] = None
+    previous_performed_at: Optional[str] = None
 
 
 class Workout(BaseModel):
@@ -637,11 +644,35 @@ async def workout_history(user: dict = Depends(get_current_user)):
     return {"sessions": sessions}
 
 
+async def _enrich_previous_results(doc: dict, user_id: str) -> dict:
+    """Fill each exercise's previous_* fields from the most recent session_log entry
+    that recorded it, regardless of whether last_* (today's validation state) has
+    since been reset. Gives the user a reference to how it went last time."""
+    exercises = doc.get("exercises", [])
+    if not exercises:
+        return doc
+    logs = await db.session_logs.find(
+        {"user_id": user_id, "workout_id": doc["id"]}, {"_id": 0}
+    ).sort("performed_at", -1).to_list(200)
+    for ex in exercises:
+        for lg in logs:
+            entry = next((e for e in lg.get("entries", []) if e.get("exercise_id") == ex["id"]), None)
+            if entry:
+                ex["previous_difficulty"] = entry.get("difficulty")
+                ex["previous_weight_kg"] = entry.get("weight_kg")
+                ex["previous_reps_done"] = entry.get("reps_done")
+                ex["previous_performed_at"] = lg.get("performed_at")
+                break
+    doc["exercises"] = exercises
+    return doc
+
+
 @api.get("/workouts/{workout_id}", response_model=Workout)
 async def get_workout(workout_id: str, user: dict = Depends(get_current_user)):
     doc = await db.workouts.find_one({"id": workout_id, "user_id": user["id"]}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Entraînement introuvable")
+    doc = await _enrich_previous_results(doc, user["id"])
     return Workout(**doc)
 
 
@@ -1015,6 +1046,7 @@ async def log_single_exercise(
         await db.session_logs.insert_one(log_doc)
 
     updated = await db.workouts.find_one({"id": workout_id}, {"_id": 0})
+    updated = await _enrich_previous_results(updated, user["id"])
     return {"workout": Workout(**updated).model_dump()}
 
 
@@ -1037,6 +1069,7 @@ async def complete_workout(workout_id: str, user: dict = Depends(get_current_use
         {"$set": {"performed_at": now_utc(), "exercises": exercises}},
     )
     updated = await db.workouts.find_one({"id": workout_id}, {"_id": 0})
+    updated = await _enrich_previous_results(updated, user["id"])
     return {"workout": Workout(**updated).model_dump()}
 async def workout_logs(workout_id: str, user: dict = Depends(get_current_user)):
     items = await db.session_logs.find(
