@@ -8,7 +8,7 @@ type AuthState = {
   user: User | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, name: string) => Promise<void>;
+  signUp: (email: string, password: string, name: string, role?: "user" | "coach") => Promise<void>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
   setUser: (u: User) => void;
@@ -51,8 +51,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUserState(res.user);
   };
 
-  const signUp = async (email: string, password: string, name: string) => {
-    const res = await api.register({ email, password, name });
+  const signUp = async (email: string, password: string, name: string, role: "user" | "coach" = "user") => {
+    const res = await api.register({ email, password, name, role });
     await setToken(res.token);
     await storage.setItem(USER_KEY, JSON.stringify(res.user));
     setUserState(res.user);

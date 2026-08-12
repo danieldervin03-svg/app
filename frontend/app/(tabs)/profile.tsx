@@ -54,6 +54,35 @@ export default function ProfileScreen() {
     setReminderBusy(false);
   };
 
+  const [coachCodeInput, setCoachCodeInput] = useState("");
+  const [coachLinking, setCoachLinking] = useState(false);
+  const [coachError, setCoachError] = useState<string | null>(null);
+
+  const linkCoach = async () => {
+    if (!coachCodeInput.trim()) return;
+    setCoachError(null);
+    setCoachLinking(true);
+    try {
+      const u = await api.linkToCoach(coachCodeInput.trim().toUpperCase());
+      setUser(u);
+      setCoachCodeInput("");
+    } catch (e: any) {
+      setCoachError(e.message ?? "Code invalide");
+    } finally {
+      setCoachLinking(false);
+    }
+  };
+
+  const unlinkCoach = async () => {
+    setCoachLinking(true);
+    try {
+      const u = await api.unlinkFromCoach();
+      setUser(u);
+    } catch {} finally {
+      setCoachLinking(false);
+    }
+  };
+
   // Health form
   const [sex, setSex] = useState<ProfileInput["sex"]>(user?.sex ?? "homme");
   const [age, setAge] = useState(user?.age ? String(user.age) : "");
@@ -237,6 +266,50 @@ export default function ProfileScreen() {
           onPress={() => setMacrosOpen(true)}
           testID="profile-macros-row"
         />
+
+        {user?.role !== "coach" ? (
+          <>
+            <Text style={styles.section}>Coach</Text>
+            {user?.coach_id ? (
+              <View style={styles.coachLinkedRow} testID="profile-coach-linked">
+                <View style={styles.rowIcon}>
+                  <Ionicons name="person-circle-outline" size={20} color={colors.onBrandTertiary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.rowLabel}>{user.coach_name ?? "Coach lié"}</Text>
+                  <Text style={styles.rowValue}>Votre coach voit vos repas et séances</Text>
+                </View>
+                <Pressable onPress={unlinkCoach} disabled={coachLinking} testID="profile-unlink-coach">
+                  <Text style={{ color: colors.error, fontSize: font.sm }}>Délier</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <View style={styles.coachLinkBox}>
+                <Text style={styles.rowValue}>Entrez le code fourni par votre coach pour qu'il puisse suivre vos progrès.</Text>
+                <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm }}>
+                  <View style={{ flex: 1 }}>
+                    <Input
+                      placeholder="Ex : AB12CD"
+                      value={coachCodeInput}
+                      onChangeText={setCoachCodeInput}
+                      autoCapitalize="characters"
+                      testID="profile-coach-code-input"
+                    />
+                  </View>
+                  <Pressable
+                    onPress={linkCoach}
+                    disabled={coachLinking || !coachCodeInput.trim()}
+                    style={[styles.linkBtn, (coachLinking || !coachCodeInput.trim()) && { opacity: 0.5 }]}
+                    testID="profile-link-coach"
+                  >
+                    <Text style={styles.linkBtnTxt}>Lier</Text>
+                  </Pressable>
+                </View>
+                {coachError ? <Text style={{ color: colors.error, fontSize: font.sm, marginTop: spacing.xs }}>{coachError}</Text> : null}
+              </View>
+            )}
+          </>
+        ) : null}
 
         <Text style={styles.section}>Notifications</Text>
         <View style={styles.row} testID="profile-reminder-row">
@@ -447,6 +520,18 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center",
   },
   rowLabel: { fontSize: font.base, color: colors.onSurface },
+  coachLinkedRow: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    padding: spacing.md, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, marginBottom: spacing.sm,
+  },
+  coachLinkBox: {
+    padding: spacing.md, backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, marginBottom: spacing.sm,
+  },
+  linkBtn: {
+    backgroundColor: colors.brandPrimary, borderRadius: radius.md,
+    paddingHorizontal: spacing.lg, alignItems: "center", justifyContent: "center",
+  },
+  linkBtnTxt: { color: colors.onBrandPrimary, fontSize: font.base, fontWeight: "500" },
   rowValue: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginTop: 2, textTransform: "capitalize" },
   logout: {
     marginTop: spacing.xxl, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm,

@@ -82,6 +82,10 @@ export type User = {
   carbs_goal_g: number | null;
   fat_goal_g: number | null;
   fiber_goal_g: number | null;
+  role: "user" | "coach";
+  coach_code: string | null;
+  coach_id: string | null;
+  coach_name: string | null;
   created_at: string;
 };
 
@@ -265,7 +269,7 @@ export type CoachMessage = {
 
 // ============ Auth ============
 export const api = {
-  register: (body: { email: string; password: string; name: string }) =>
+  register: (body: { email: string; password: string; name: string; role?: "user" | "coach" }) =>
     request<{ token: string; user: User }>("/auth/register", { method: "POST", body, auth: false }),
   login: (body: { email: string; password: string }) =>
     request<{ token: string; user: User }>("/auth/login", { method: "POST", body, auth: false }),
@@ -434,4 +438,55 @@ export const api = {
     }),
   coachClear: (workoutId?: string) =>
     request<{ ok: boolean }>(`/coach/messages${workoutId ? `?workout_id=${workoutId}` : ""}`, { method: "DELETE" }),
+
+  // Coach (human trainer) ↔ Student — distinct from the AI "coach chat" above
+  linkToCoach: (code: string) =>
+    request<User>("/coach/link", { method: "POST", body: { code } }),
+  unlinkFromCoach: () => request<User>("/coach/unlink", { method: "POST" }),
+  coachStudents: () =>
+    request<{
+      students: {
+        id: string; name: string; email: string; calorie_goal: number;
+        meals_today: number; linked_since: string;
+      }[];
+    }>("/coach/students"),
+  coachRemoveStudent: (studentId: string) =>
+    request<{ ok: boolean }>(`/coach/students/${studentId}`, { method: "DELETE" }),
+  coachStudentToday: (studentId: string) =>
+    request<{
+      student: { id: string; name: string; email: string };
+      nutrition: {
+        calorie_goal: number; calories_consumed: number;
+        protein_goal_g: number; protein_consumed_g: number;
+        carbs_goal_g: number; carbs_consumed_g: number;
+        fat_goal_g: number; fat_consumed_g: number;
+        fiber_goal_g: number; fiber_consumed_g: number;
+        meals: { name: string; calories: number; meal_type: string }[];
+      };
+      workouts_today: {
+        completed: { id: string; title: string }[];
+        in_progress: { id: string; title: string }[];
+      };
+    }>(`/coach/students/${studentId}/today`),
+  coachStudentHistory: (studentId: string) =>
+    request<{
+      workouts: { id: string; title: string; performed_at: string; exercises_count: number }[];
+      measurements: Measurement[];
+    }>(`/coach/students/${studentId}/history`),
+  coachAssignGeneratedWorkout: (studentId: string, body: {
+    goal: string;
+    level: "débutant" | "intermédiaire" | "avancé";
+    duration_minutes: number;
+    equipment: string;
+    focus?: string;
+  }) => request<Workout>(`/coach/students/${studentId}/workouts/generate`, { method: "POST", body, timeoutMs: 45000 }),
+  coachAssignWorkout: (studentId: string, body: {
+    title: string; description?: string;
+    exercises: { name: string; sets: number; reps: string; rest_seconds: number; notes?: string }[];
+  }) => request<Workout>(`/coach/students/${studentId}/workouts`, { method: "POST", body }),
+  coachSetStudentNutritionGoal: (studentId: string, body: {
+    calorie_goal: number;
+    protein_goal_g?: number | null; carbs_goal_g?: number | null;
+    fat_goal_g?: number | null; fiber_goal_g?: number | null;
+  }) => request<User>(`/coach/students/${studentId}/nutrition-goal`, { method: "PUT", body }),
 };

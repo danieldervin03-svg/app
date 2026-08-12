@@ -14,6 +14,7 @@ export default function RegisterScreen() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [role, setRole] = useState<"user" | "coach">("user");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,7 +26,7 @@ export default function RegisterScreen() {
     }
     setLoading(true);
     try {
-      await signUp(email.trim(), password, name.trim());
+      await signUp(email.trim(), password, name.trim(), role);
       router.replace("/(tabs)");
     } catch (e: any) {
       setError(e.message || "Impossible de créer le compte");
@@ -56,6 +57,26 @@ export default function RegisterScreen() {
         <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
           <Text style={styles.title}>Créer un compte</Text>
           <Text style={styles.subtitle}>Quelques secondes suffisent</Text>
+
+          <Text style={styles.roleLabel}>Je suis…</Text>
+          <View style={styles.roleRow}>
+            <Pressable
+              onPress={() => setRole("user")}
+              style={[styles.roleCard, role === "user" && styles.roleCardActive]}
+              testID="register-role-user"
+            >
+              <Text style={[styles.roleTitle, role === "user" && styles.roleTitleActive]}>Utilisateur</Text>
+              <Text style={[styles.roleSub, role === "user" && styles.roleSubActive]}>Je m'entraîne</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setRole("coach")}
+              style={[styles.roleCard, role === "coach" && styles.roleCardActive]}
+              testID="register-role-coach"
+            >
+              <Text style={[styles.roleTitle, role === "coach" && styles.roleTitleActive]}>Coach</Text>
+              <Text style={[styles.roleSub, role === "coach" && styles.roleSubActive]}>J'accompagne des élèves</Text>
+            </Pressable>
+          </View>
 
           <Input
             label="Prénom"
@@ -117,6 +138,17 @@ const styles = StyleSheet.create({
   form: { padding: spacing.xl, paddingBottom: spacing.xxxl },
   title: { fontSize: font.xxl, color: colors.onSurface, marginBottom: spacing.xs },
   subtitle: { fontSize: font.base, color: colors.onSurfaceSecondary, marginBottom: spacing.xl },
+  roleLabel: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginBottom: spacing.sm },
+  roleRow: { flexDirection: "row", gap: spacing.md, marginBottom: spacing.lg },
+  roleCard: {
+    flex: 1, padding: spacing.md, borderRadius: 12,
+    borderWidth: 1.5, borderColor: colors.divider, backgroundColor: colors.surface,
+  },
+  roleCardActive: { borderColor: colors.brandPrimary, backgroundColor: colors.brandTertiary },
+  roleTitle: { fontSize: font.base, fontWeight: "600", color: colors.onSurface },
+  roleTitleActive: { color: colors.brandPrimary },
+  roleSub: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginTop: 2 },
+  roleSubActive: { color: colors.onBrandTertiary },
   err: { color: colors.error, textAlign: "center", marginTop: spacing.sm },
   link: { alignItems: "center", marginTop: spacing.xl },
   linkTxt: { color: colors.onSurfaceSecondary, fontSize: font.base },
