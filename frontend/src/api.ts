@@ -380,6 +380,12 @@ export const api = {
     request<MenuScanResult>("/meals/scan-menu", { method: "POST", body: { image_base64, mime_type } }),
   scanFood: (image_base64: string, mime_type: string) =>
     request<FoodScanResult>("/meals/scan-food", { method: "POST", body: { image_base64, mime_type } }),
+  barcodeLookup: (code: string) =>
+    request<{
+      found: boolean;
+      name: string | null;
+      per_100g: { calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; fiber_g: number | null } | null;
+    }>(`/meals/barcode-lookup?code=${encodeURIComponent(code)}`),
   getExerciseGif: (name: string) =>
     request<{ found: boolean; gif_url: string | null; name_en: string | null }>(
       `/exercises/gif?name=${encodeURIComponent(name)}`,

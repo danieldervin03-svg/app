@@ -482,6 +482,14 @@ export default function NutritionScreen() {
               <Ionicons name="camera-outline" size={18} color={colors.brandPrimary} />
               <Text style={styles.actionTxtAlt}>Scanner un menu</Text>
             </Pressable>
+            <Pressable
+              style={styles.scanMenuBtn}
+              onPress={() => router.push("/barcode-scanner" as any)}
+              testID="nutrition-scan-barcode"
+            >
+              <Ionicons name="barcode-outline" size={18} color={colors.brandPrimary} />
+              <Text style={styles.actionTxtAlt}>Scanner un code-barres</Text>
+            </Pressable>
 
             {quickFavorites.length > 0 || quickRecent.length > 0 ? (
               <View style={styles.quickSection}>

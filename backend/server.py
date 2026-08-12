@@ -1421,6 +1421,59 @@ async def scan_food(body: MenuScanInput, user: dict = Depends(get_current_user))
     }
 
 
+@api.get("/meals/barcode-lookup")
+async def barcode_lookup(code: str, user: dict = Depends(get_current_user)):
+    """Look up a packaged food product by barcode via Open Food Facts (free, no key
+    required). Returns per-100g nutrition values; the app scales them to the actual
+    quantity consumed."""
+    code = code.strip()
+    if not code.isdigit():
+        raise HTTPException(400, "Code-barres invalide")
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                f"https://world.openfoodfacts.org/api/v2/product/{code}.json",
+                headers={"User-Agent": "Bodypilot/1.0 (contact: Bodypilot@gmail.com)"},
+            )
+        if resp.status_code != 200:
+            raise HTTPException(502, "Service de recherche indisponible, réessayez")
+        payload = resp.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Barcode lookup error for '%s': %s", code, e)
+        raise HTTPException(502, "Service de recherche indisponible, réessayez")
+
+    if payload.get("status") != 1 or not payload.get("product"):
+        return {"found": False, "name": None, "per_100g": None}
+
+    p = payload["product"]
+    nutr = p.get("nutriments", {}) or {}
+    name = p.get("product_name") or p.get("product_name_fr") or p.get("generic_name") or "Produit"
+    brand = p.get("brands")
+    if brand:
+        name = f"{name} ({brand.split(',')[0].strip()})"
+
+    def _num(key: str) -> Optional[float]:
+        v = nutr.get(key)
+        try:
+            return round(float(v), 2) if v is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    return {
+        "found": True,
+        "name": name[:100],
+        "per_100g": {
+            "calories": _num("energy-kcal_100g"),
+            "protein_g": _num("proteins_100g"),
+            "carbs_g": _num("carbohydrates_100g"),
+            "fat_g": _num("fat_100g"),
+            "fiber_g": _num("fiber_100g"),
+        },
+    }
+
+
 @api.post("/meals/scan-menu")
 async def scan_menu(body: MenuScanInput, user: dict = Depends(get_current_user)):
     """Analyze a photo of a restaurant menu and recommend the best dish for the user's goals."""
