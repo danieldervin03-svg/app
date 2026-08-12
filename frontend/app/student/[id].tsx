@@ -41,6 +41,46 @@ export default function StudentDetailScreen() {
   const [goalSaving, setGoalSaving] = useState(false);
   const [goalError, setGoalError] = useState<string | null>(null);
 
+  const [workoutsOpen, setWorkoutsOpen] = useState(false);
+  const [studentWorkouts, setStudentWorkouts] = useState<{ id: string; title: string; exercises: any[]; performed_at: string | null }[]>([]);
+  const [workoutsLoading, setWorkoutsLoading] = useState(false);
+
+  const [nutriHistOpen, setNutriHistOpen] = useState(false);
+  const [nutriHistDays, setNutriHistDays] = useState<{ date: string; calories: number; protein_g: number; carbs_g: number; fat_g: number; fiber_g: number; meals_count: number }[]>([]);
+  const [nutriHistLoading, setNutriHistLoading] = useState(false);
+
+  const openWorkoutsList = async () => {
+    if (!id) return;
+    setWorkoutsOpen(true);
+    setWorkoutsLoading(true);
+    try {
+      const res = await api.coachStudentWorkouts(id);
+      setStudentWorkouts(res.workouts as any);
+    } catch {} finally {
+      setWorkoutsLoading(false);
+    }
+  };
+
+  const openNutriHistory = async () => {
+    if (!id) return;
+    setNutriHistOpen(true);
+    setNutriHistLoading(true);
+    try {
+      const res = await api.coachStudentNutritionHistory(id);
+      setNutriHistDays(res.days);
+    } catch {} finally {
+      setNutriHistLoading(false);
+    }
+  };
+
+  const deleteStudentWorkout = async (workoutId: string) => {
+    if (!id) return;
+    await api.coachDeleteStudentWorkout(id, workoutId).catch(() => {});
+    const res = await api.coachStudentWorkouts(id).catch(() => null);
+    if (res) setStudentWorkouts(res.workouts as any);
+    load();
+  };
+
   const load = useCallback(async () => {
     if (!id) return;
     try {
@@ -119,11 +159,20 @@ export default function StudentDetailScreen() {
           <Ionicons name="chevron-back" size={24} color={colors.onSurface} />
         </Pressable>
         <Text style={styles.headerTitle} numberOfLines={1}>{today.student.name}</Text>
-        <View style={{ width: 40 }} />
+        <Pressable
+          onPress={() => router.push({ pathname: "/student/chat", params: { studentId: id, studentName: today.student.name } } as any)}
+          style={styles.iconBtn}
+          testID="student-open-chat"
+        >
+          <Ionicons name="chatbubble-ellipses-outline" size={22} color={colors.brandPrimary} />
+        </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.sectionH}>Aujourd'hui — Nutrition</Text>
+        <Pressable onPress={openNutriHistory} testID="student-open-nutrition-history">
+          <Text style={styles.linkTxt}>Voir l'historique nutritionnel complet →</Text>
+        </Pressable>
         <View style={styles.nutriCard}>
           <View style={styles.rowBetween}>
             <Text style={styles.nutriBig}>{n.calories_consumed} kcal</Text>
@@ -176,10 +225,25 @@ export default function StudentDetailScreen() {
           <Ionicons name="sparkles" size={18} color={colors.onBrandPrimary} />
           <Text style={styles.assignBtnTxt}>Générer un programme IA</Text>
         </Pressable>
+        <Pressable
+          style={[styles.assignBtn, styles.assignBtnAlt]}
+          onPress={() => router.push({ pathname: "/student/workout-form", params: { studentId: id } } as any)}
+          testID="student-create-manual"
+        >
+          <Ionicons name="create-outline" size={18} color={colors.brandPrimary} />
+          <Text style={[styles.assignBtnTxt, { color: colors.brandPrimary }]}>Créer une séance manuellement</Text>
+        </Pressable>
         <Pressable style={[styles.assignBtn, styles.assignBtnAlt]} onPress={() => setGoalOpen(true)} testID="student-assign-goal">
           <Ionicons name="flag-outline" size={18} color={colors.brandPrimary} />
           <Text style={[styles.assignBtnTxt, { color: colors.brandPrimary }]}>Définir l'objectif nutritionnel</Text>
         </Pressable>
+
+        <View style={styles.rowSpread}>
+          <Text style={styles.sectionH}>Ses séances</Text>
+          <Pressable onPress={openWorkoutsList} testID="student-open-workouts-list">
+            <Text style={styles.linkTxt}>Voir tout →</Text>
+          </Pressable>
+        </View>
 
         <Text style={styles.sectionH}>Historique récent</Text>
         {!history || history.workouts.length === 0 ? (
@@ -261,6 +325,79 @@ export default function StudentDetailScreen() {
           </KeyboardAvoidingView>
         </View>
       </Modal>
+
+      {/* Student's workouts list (edit/delete) */}
+      <Modal visible={workoutsOpen} transparent animationType="slide" onRequestClose={() => setWorkoutsOpen(false)}>
+        <View style={styles.modalBg}>
+          <View style={[styles.modalCard, { maxHeight: "85%" }]}>
+            <View style={styles.dragHandle} />
+            <Text style={styles.modalTitle}>Ses séances</Text>
+            {workoutsLoading ? (
+              <ActivityIndicator color={colors.brandPrimary} style={{ marginTop: spacing.lg }} />
+            ) : studentWorkouts.length === 0 ? (
+              <EmptyState title="Aucune séance" subtitle="Assignez-en une depuis l'écran précédent." />
+            ) : (
+              <ScrollView>
+                {studentWorkouts.map((w) => (
+                  <View key={w.id} style={styles.workoutListRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.histTitle}>{w.title}</Text>
+                      <Text style={styles.histSub}>{w.exercises?.length ?? 0} exercices</Text>
+                    </View>
+                    <Pressable
+                      onPress={() => {
+                        setWorkoutsOpen(false);
+                        router.push({ pathname: "/student/workout-form", params: { studentId: id, workoutId: w.id } } as any);
+                      }}
+                      style={styles.miniIconBtn}
+                      testID={`edit-workout-${w.id}`}
+                    >
+                      <Ionicons name="create-outline" size={18} color={colors.brandPrimary} />
+                    </Pressable>
+                    <Pressable onPress={() => deleteStudentWorkout(w.id)} style={styles.miniIconBtn} testID={`delete-workout-${w.id}`}>
+                      <Ionicons name="trash-outline" size={18} color={colors.error} />
+                    </Pressable>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+            <Pressable onPress={() => setWorkoutsOpen(false)} style={{ alignItems: "center", padding: spacing.md }}>
+              <Text style={{ color: colors.onSurfaceSecondary }}>Fermer</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Full nutrition history */}
+      <Modal visible={nutriHistOpen} transparent animationType="slide" onRequestClose={() => setNutriHistOpen(false)}>
+        <View style={styles.modalBg}>
+          <View style={[styles.modalCard, { maxHeight: "85%" }]}>
+            <View style={styles.dragHandle} />
+            <Text style={styles.modalTitle}>Historique nutritionnel</Text>
+            {nutriHistLoading ? (
+              <ActivityIndicator color={colors.brandPrimary} style={{ marginTop: spacing.lg }} />
+            ) : nutriHistDays.length === 0 ? (
+              <EmptyState title="Aucune donnée" subtitle="Aucun repas enregistré pour le moment." />
+            ) : (
+              <ScrollView>
+                {nutriHistDays.map((d) => (
+                  <View key={d.date} style={styles.histRow}>
+                    <Text style={styles.histTitle}>
+                      {new Date(d.date + "T00:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
+                    </Text>
+                    <Text style={styles.histSub}>
+                      {d.calories} kcal · P {d.protein_g}g · G {d.carbs_g}g · L {d.fat_g}g · F {d.fiber_g}g · {d.meals_count} repas
+                    </Text>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+            <Pressable onPress={() => setNutriHistOpen(false)} style={{ alignItems: "center", padding: spacing.md }}>
+              <Text style={{ color: colors.onSurfaceSecondary }}>Fermer</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -317,4 +454,11 @@ const styles = StyleSheet.create({
   chipTxt: { fontSize: font.sm, color: colors.onSurface },
   chipTxtActive: { color: colors.onBrandPrimary },
   err: { color: colors.error, textAlign: "center", marginBottom: spacing.sm },
+  linkTxt: { color: colors.brandPrimary, fontSize: font.sm, fontWeight: "500", marginBottom: spacing.sm },
+  rowSpread: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: spacing.lg },
+  workoutListRow: {
+    flexDirection: "row", alignItems: "center", gap: spacing.sm,
+    backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm,
+  },
+  miniIconBtn: { padding: spacing.xs },
 });

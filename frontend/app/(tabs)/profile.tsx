@@ -271,18 +271,28 @@ export default function ProfileScreen() {
           <>
             <Text style={styles.section}>Coach</Text>
             {user?.coach_id ? (
-              <View style={styles.coachLinkedRow} testID="profile-coach-linked">
-                <View style={styles.rowIcon}>
-                  <Ionicons name="person-circle-outline" size={20} color={colors.onBrandTertiary} />
+              <>
+                <View style={styles.coachLinkedRow} testID="profile-coach-linked">
+                  <View style={styles.rowIcon}>
+                    <Ionicons name="person-circle-outline" size={20} color={colors.onBrandTertiary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.rowLabel}>{user.coach_name ?? "Coach lié"}</Text>
+                    <Text style={styles.rowValue}>Votre coach voit vos repas et séances</Text>
+                  </View>
+                  <Pressable onPress={unlinkCoach} disabled={coachLinking} testID="profile-unlink-coach">
+                    <Text style={{ color: colors.error, fontSize: font.sm }}>Délier</Text>
+                  </Pressable>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.rowLabel}>{user.coach_name ?? "Coach lié"}</Text>
-                  <Text style={styles.rowValue}>Votre coach voit vos repas et séances</Text>
-                </View>
-                <Pressable onPress={unlinkCoach} disabled={coachLinking} testID="profile-unlink-coach">
-                  <Text style={{ color: colors.error, fontSize: font.sm }}>Délier</Text>
+                <Pressable
+                  onPress={() => router.push("/my-coach-chat" as any)}
+                  style={styles.chatWithCoachBtn}
+                  testID="profile-chat-coach"
+                >
+                  <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.brandPrimary} />
+                  <Text style={{ color: colors.brandPrimary, fontSize: font.base, fontWeight: "500" }}>Discuter avec mon coach</Text>
                 </Pressable>
-              </View>
+              </>
             ) : (
               <View style={styles.coachLinkBox}>
                 <Text style={styles.rowValue}>Entrez le code fourni par votre coach pour qu'il puisse suivre vos progrès.</Text>
@@ -532,6 +542,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg, alignItems: "center", justifyContent: "center",
   },
   linkBtnTxt: { color: colors.onBrandPrimary, fontSize: font.base, fontWeight: "500" },
+  chatWithCoachBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm,
+    borderWidth: 1, borderColor: colors.brandPrimary, borderRadius: radius.md,
+    paddingVertical: spacing.sm, marginBottom: spacing.sm,
+  },
   rowValue: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginTop: 2, textTransform: "capitalize" },
   logout: {
     marginTop: spacing.xxl, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm,

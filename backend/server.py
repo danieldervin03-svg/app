@@ -720,6 +720,129 @@ async def set_student_nutrition_goal(
     return public_user(updated)
 
 
+@api.get("/coach/students/{student_id}/workouts")
+async def coach_list_student_workouts(student_id: str, coach: dict = Depends(get_current_coach)):
+    await _get_owned_student(student_id, coach)
+    workouts = await db.workouts.find({"user_id": student_id}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return {"workouts": [Workout(**w).model_dump() for w in workouts]}
+
+
+@api.get("/coach/students/{student_id}/workouts/{workout_id}", response_model=Workout)
+async def coach_get_student_workout(student_id: str, workout_id: str, coach: dict = Depends(get_current_coach)):
+    await _get_owned_student(student_id, coach)
+    doc = await db.workouts.find_one({"id": workout_id, "user_id": student_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Entraînement introuvable")
+    return Workout(**doc)
+
+
+@api.put("/coach/students/{student_id}/workouts/{workout_id}", response_model=Workout)
+async def coach_update_student_workout(
+    student_id: str, workout_id: str, body: WorkoutUpdate, coach: dict = Depends(get_current_coach)
+):
+    await _get_owned_student(student_id, coach)
+    doc = await db.workouts.find_one({"id": workout_id, "user_id": student_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Entraînement introuvable")
+    updates = {k: v for k, v in body.model_dump(exclude_none=True).items()}
+    if updates:
+        await db.workouts.update_one({"id": workout_id}, {"$set": updates})
+    updated = await db.workouts.find_one({"id": workout_id}, {"_id": 0})
+    return Workout(**updated)
+
+
+@api.delete("/coach/students/{student_id}/workouts/{workout_id}")
+async def coach_delete_student_workout(student_id: str, workout_id: str, coach: dict = Depends(get_current_coach)):
+    await _get_owned_student(student_id, coach)
+    res = await db.workouts.delete_one({"id": workout_id, "user_id": student_id})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Entraînement introuvable")
+    return {"ok": True}
+
+
+@api.get("/coach/students/{student_id}/nutrition-history")
+async def coach_student_nutrition_history(student_id: str, coach: dict = Depends(get_current_coach)):
+    await _get_owned_student(student_id, coach)
+    all_meals = await db.meals.find({"user_id": student_id}, {"_id": 0}).to_list(3000)
+    by_date: dict = {}
+    for m in all_meals:
+        d = m.get("date")
+        if not d:
+            continue
+        agg = by_date.setdefault(d, {
+            "date": d, "calories": 0, "protein_g": 0.0, "carbs_g": 0.0,
+            "fat_g": 0.0, "fiber_g": 0.0, "meals_count": 0,
+        })
+        agg["calories"] += int(m.get("calories", 0))
+        agg["protein_g"] += float(m.get("protein_g") or 0)
+        agg["carbs_g"] += float(m.get("carbs_g") or 0)
+        agg["fat_g"] += float(m.get("fat_g") or 0)
+        agg["fiber_g"] += float(m.get("fiber_g") or 0)
+        agg["meals_count"] += 1
+    days = sorted(by_date.values(), key=lambda x: x["date"], reverse=True)
+    for d in days:
+        d["protein_g"] = round(d["protein_g"], 1)
+        d["carbs_g"] = round(d["carbs_g"], 1)
+        d["fat_g"] = round(d["fat_g"], 1)
+        d["fiber_g"] = round(d["fiber_g"], 1)
+    return {"days": days[:90]}
+
+
+# ---- Coach ↔ Student messaging (distinct from the AI "/coach/chat" feature) ----
+
+class StudentMessageInput(BaseModel):
+    content: str = Field(min_length=1, max_length=2000)
+
+
+def _student_message_public(m: dict) -> dict:
+    return {
+        "id": m["id"], "sender_role": m["sender_role"],
+        "content": m["content"], "created_at": m["created_at"],
+    }
+
+
+@api.get("/coach/students/{student_id}/chat")
+async def coach_get_chat(student_id: str, coach: dict = Depends(get_current_coach)):
+    await _get_owned_student(student_id, coach)
+    msgs = await db.coach_student_messages.find(
+        {"coach_id": coach["id"], "student_id": student_id}, {"_id": 0}
+    ).sort("created_at", 1).to_list(500)
+    return {"messages": [_student_message_public(m) for m in msgs]}
+
+
+@api.post("/coach/students/{student_id}/chat")
+async def coach_send_chat(student_id: str, body: StudentMessageInput, coach: dict = Depends(get_current_coach)):
+    await _get_owned_student(student_id, coach)
+    msg = {
+        "id": new_id(), "coach_id": coach["id"], "student_id": student_id,
+        "sender_role": "coach", "content": body.content.strip(), "created_at": now_utc(),
+    }
+    await db.coach_student_messages.insert_one(msg)
+    return _student_message_public(msg)
+
+
+@api.get("/my-coach/chat")
+async def student_get_chat(user: dict = Depends(get_current_user)):
+    if not user.get("coach_id"):
+        raise HTTPException(400, "Aucun coach lié")
+    msgs = await db.coach_student_messages.find(
+        {"coach_id": user["coach_id"], "student_id": user["id"]}, {"_id": 0}
+    ).sort("created_at", 1).to_list(500)
+    return {"messages": [_student_message_public(m) for m in msgs]}
+
+
+@api.post("/my-coach/chat")
+async def student_send_chat(body: StudentMessageInput, user: dict = Depends(get_current_user)):
+    if not user.get("coach_id"):
+        raise HTTPException(400, "Aucun coach lié")
+    msg = {
+        "id": new_id(), "coach_id": user["coach_id"], "student_id": user["id"],
+        "sender_role": "user", "content": body.content.strip(), "created_at": now_utc(),
+    }
+    await db.coach_student_messages.insert_one(msg)
+    return _student_message_public(msg)
+
+
 # ============================================================================
 # LLM helper
 # ============================================================================

@@ -267,6 +267,13 @@ export type CoachMessage = {
   created_at: string;
 };
 
+export type StudentMessage = {
+  id: string;
+  sender_role: "coach" | "user";
+  content: string;
+  created_at: string;
+};
+
 // ============ Auth ============
 export const api = {
   register: (body: { email: string; password: string; name: string; role?: "user" | "coach" }) =>
@@ -489,4 +496,26 @@ export const api = {
     protein_goal_g?: number | null; carbs_goal_g?: number | null;
     fat_goal_g?: number | null; fiber_goal_g?: number | null;
   }) => request<User>(`/coach/students/${studentId}/nutrition-goal`, { method: "PUT", body }),
+  coachStudentWorkouts: (studentId: string) =>
+    request<{ workouts: Workout[] }>(`/coach/students/${studentId}/workouts`),
+  coachGetStudentWorkout: (studentId: string, workoutId: string) =>
+    request<Workout>(`/coach/students/${studentId}/workouts/${workoutId}`),
+  coachUpdateStudentWorkout: (studentId: string, workoutId: string, body: {
+    title?: string; description?: string; exercises?: Exercise[];
+  }) => request<Workout>(`/coach/students/${studentId}/workouts/${workoutId}`, { method: "PUT", body }),
+  coachDeleteStudentWorkout: (studentId: string, workoutId: string) =>
+    request<{ ok: boolean }>(`/coach/students/${studentId}/workouts/${workoutId}`, { method: "DELETE" }),
+  coachStudentNutritionHistory: (studentId: string) =>
+    request<{
+      days: { date: string; calories: number; protein_g: number; carbs_g: number; fat_g: number; fiber_g: number; meals_count: number }[];
+    }>(`/coach/students/${studentId}/nutrition-history`),
+
+  // Coach ↔ Student messaging (distinct from AI coach chat above)
+  coachGetChatWithStudent: (studentId: string) =>
+    request<{ messages: StudentMessage[] }>(`/coach/students/${studentId}/chat`),
+  coachSendChatToStudent: (studentId: string, content: string) =>
+    request<StudentMessage>(`/coach/students/${studentId}/chat`, { method: "POST", body: { content } }),
+  myCoachChat: () => request<{ messages: StudentMessage[] }>("/my-coach/chat"),
+  sendToMyCoach: (content: string) =>
+    request<StudentMessage>("/my-coach/chat", { method: "POST", body: { content } }),
 };
