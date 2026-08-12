@@ -63,6 +63,7 @@ class RegisterInput(BaseModel):
     email: EmailStr
     password: str = Field(min_length=6)
     name: str = Field(min_length=1, max_length=80)
+    role: Literal["user", "coach"] = "user"
 
 
 class LoginInput(BaseModel):
@@ -89,6 +90,10 @@ class UserPublic(BaseModel):
     carbs_goal_g: Optional[float] = None
     fat_goal_g: Optional[float] = None
     fiber_goal_g: Optional[float] = None
+    role: Literal["user", "coach"] = "user"
+    coach_code: Optional[str] = None       # present only for coaches: their shareable invite code
+    coach_id: Optional[str] = None         # present only for students: the linked coach's user id
+    coach_name: Optional[str] = None       # present only for students, once linked: coach's display name
     created_at: str
 
 
@@ -390,7 +395,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     return user
 
 
-def public_user(u: dict) -> UserPublic:
+def public_user(u: dict, coach_name: Optional[str] = None) -> UserPublic:
     return UserPublic(
         id=u["id"],
         email=u["email"],
@@ -410,6 +415,10 @@ def public_user(u: dict) -> UserPublic:
         carbs_goal_g=u.get("carbs_goal_g"),
         fat_goal_g=u.get("fat_goal_g"),
         fiber_goal_g=u.get("fiber_goal_g"),
+        role=u.get("role", "user"),
+        coach_code=u.get("coach_code"),
+        coach_id=u.get("coach_id"),
+        coach_name=coach_name,
         created_at=u["created_at"],
     )
 
@@ -417,6 +426,17 @@ def public_user(u: dict) -> UserPublic:
 # ============================================================================
 # Auth endpoints
 # ============================================================================
+
+async def _generate_coach_code() -> str:
+    import random
+    import string
+    for _ in range(20):
+        code = "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+        existing = await db.users.find_one({"coach_code": code})
+        if not existing:
+            return code
+    raise HTTPException(500, "Impossible de générer un code coach, réessayez")
+
 
 @api.post("/auth/register", response_model=AuthResponse)
 async def register(body: RegisterInput):
@@ -437,6 +457,9 @@ async def register(body: RegisterInput):
         "weight_kg": None,
         "activity_level": None,
         "fitness_goal": None,
+        "role": body.role,
+        "coach_code": await _generate_coach_code() if body.role == "coach" else None,
+        "coach_id": None,
         "created_at": now_utc(),
     }
     await db.users.insert_one(user)
@@ -455,7 +478,11 @@ async def login(body: LoginInput):
 
 @api.get("/auth/me", response_model=UserPublic)
 async def me(user: dict = Depends(get_current_user)):
-    return public_user(user)
+    coach_name = None
+    if user.get("coach_id"):
+        coach_doc = await db.users.find_one({"id": user["coach_id"]}, {"_id": 0, "name": 1})
+        coach_name = coach_doc["name"] if coach_doc else None
+    return public_user(user, coach_name=coach_name)
 
 
 @api.put("/user/calorie-goal", response_model=UserPublic)
@@ -521,6 +548,175 @@ async def update_profile(body: ProfileUpdate, user: dict = Depends(get_current_u
     updates["calorie_last_adjust_reason"] = None
     await db.users.update_one({"id": user["id"]}, {"$set": updates})
     updated = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password_hash": 0})
+    return public_user(updated)
+
+
+# ============================================================================
+# Coach ↔ Student
+# ============================================================================
+
+class CoachLinkInput(BaseModel):
+    code: str = Field(min_length=4, max_length=12)
+
+
+class CoachNutritionGoalInput(BaseModel):
+    calorie_goal: int = Field(ge=800, le=8000)
+    protein_goal_g: Optional[float] = Field(default=None, ge=0, le=500)
+    carbs_goal_g: Optional[float] = Field(default=None, ge=0, le=900)
+    fat_goal_g: Optional[float] = Field(default=None, ge=0, le=400)
+    fiber_goal_g: Optional[float] = Field(default=None, ge=0, le=150)
+
+
+async def get_current_coach(user: dict = Depends(get_current_user)) -> dict:
+    if user.get("role") != "coach":
+        raise HTTPException(403, "Réservé aux comptes coach")
+    return user
+
+
+async def _get_owned_student(student_id: str, coach: dict) -> dict:
+    """Fetch a student doc, verifying they're actually linked to this coach."""
+    student = await db.users.find_one({"id": student_id}, {"_id": 0, "password_hash": 0})
+    if not student or student.get("coach_id") != coach["id"]:
+        raise HTTPException(404, "Élève introuvable")
+    return student
+
+
+@api.post("/coach/link", response_model=UserPublic)
+async def link_coach(body: CoachLinkInput, user: dict = Depends(get_current_user)):
+    if user.get("role") == "coach":
+        raise HTTPException(400, "Un compte coach ne peut pas avoir de coach")
+    coach = await db.users.find_one({"coach_code": body.code.strip().upper(), "role": "coach"}, {"_id": 0})
+    if not coach:
+        raise HTTPException(404, "Code coach invalide")
+    if coach["id"] == user["id"]:
+        raise HTTPException(400, "Vous ne pouvez pas vous lier à vous-même")
+    await db.users.update_one({"id": user["id"]}, {"$set": {"coach_id": coach["id"]}})
+    updated = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password_hash": 0})
+    return public_user(updated, coach_name=coach["name"])
+
+
+@api.post("/coach/unlink", response_model=UserPublic)
+async def unlink_coach(user: dict = Depends(get_current_user)):
+    await db.users.update_one({"id": user["id"]}, {"$set": {"coach_id": None}})
+    updated = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password_hash": 0})
+    return public_user(updated)
+
+
+@api.get("/coach/students")
+async def list_students(coach: dict = Depends(get_current_coach)):
+    students = await db.users.find(
+        {"coach_id": coach["id"]}, {"_id": 0, "password_hash": 0}
+    ).sort("name", 1).to_list(500)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    results = []
+    for s in students:
+        meals_today = await db.meals.count_documents({"user_id": s["id"], "date": today})
+        results.append({
+            "id": s["id"],
+            "name": s["name"],
+            "email": s["email"],
+            "calorie_goal": s.get("calorie_goal", 2000),
+            "meals_today": meals_today,
+            "linked_since": s.get("created_at"),
+        })
+    return {"students": results}
+
+
+@api.delete("/coach/students/{student_id}")
+async def remove_student(student_id: str, coach: dict = Depends(get_current_coach)):
+    await _get_owned_student(student_id, coach)
+    await db.users.update_one({"id": student_id}, {"$set": {"coach_id": None}})
+    return {"ok": True}
+
+
+@api.get("/coach/students/{student_id}/today")
+async def student_today(student_id: str, coach: dict = Depends(get_current_coach)):
+    student = await _get_owned_student(student_id, coach)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    meals = await db.meals.find({"user_id": student_id, "date": today}, {"_id": 0}).to_list(200)
+    consumed = sum(int(m.get("calories", 0)) for m in meals)
+    goal = int(student.get("calorie_goal", 2000))
+    macros = compute_macro_goals(goal, student.get("fitness_goal"), student)
+    protein_c = sum(float(m.get("protein_g") or 0) for m in meals)
+    carbs_c = sum(float(m.get("carbs_g") or 0) for m in meals)
+    fat_c = sum(float(m.get("fat_g") or 0) for m in meals)
+    fiber_c = sum(float(m.get("fiber_g") or 0) for m in meals)
+
+    workouts = await db.workouts.find({"user_id": student_id}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    todays_logs = await db.session_logs.find(
+        {"user_id": student_id, "performed_at": {"$regex": f"^{today}"}}, {"_id": 0}
+    ).to_list(50)
+    validated_today_ids = {lg["workout_id"] for lg in todays_logs}
+    completed_today = [w for w in workouts if w.get("performed_at", "").startswith(today)]
+    in_progress_today = [w for w in workouts if w["id"] in validated_today_ids and w["id"] not in {w2["id"] for w2 in completed_today}]
+
+    return {
+        "student": {"id": student["id"], "name": student["name"], "email": student["email"]},
+        "nutrition": {
+            "calorie_goal": goal,
+            "calories_consumed": consumed,
+            "protein_goal_g": macros["protein_goal_g"], "protein_consumed_g": round(protein_c, 1),
+            "carbs_goal_g": macros["carbs_goal_g"], "carbs_consumed_g": round(carbs_c, 1),
+            "fat_goal_g": macros["fat_goal_g"], "fat_consumed_g": round(fat_c, 1),
+            "fiber_goal_g": macros["fiber_goal_g"], "fiber_consumed_g": round(fiber_c, 1),
+            "meals": [{"name": m["name"], "calories": m["calories"], "meal_type": m["meal_type"]} for m in meals],
+        },
+        "workouts_today": {
+            "completed": [{"id": w["id"], "title": w["title"]} for w in completed_today],
+            "in_progress": [{"id": w["id"], "title": w["title"]} for w in in_progress_today],
+        },
+    }
+
+
+@api.get("/coach/students/{student_id}/history")
+async def student_history(student_id: str, coach: dict = Depends(get_current_coach)):
+    await _get_owned_student(student_id, coach)
+    workouts = await db.workouts.find(
+        {"user_id": student_id, "performed_at": {"$ne": None}}, {"_id": 0}
+    ).sort("performed_at", -1).to_list(100)
+    measurements = await db.measurements.find(
+        {"user_id": student_id}, {"_id": 0}
+    ).sort("created_at", -1).to_list(60)
+    return {
+        "workouts": [
+            {"id": w["id"], "title": w["title"], "performed_at": w["performed_at"], "exercises_count": len(w.get("exercises", []))}
+            for w in workouts
+        ],
+        "measurements": measurements,
+    }
+
+
+@api.post("/coach/students/{student_id}/workouts", response_model=Workout)
+async def assign_workout(student_id: str, body: WorkoutCreate, coach: dict = Depends(get_current_coach)):
+    await _get_owned_student(student_id, coach)
+    wk = Workout(user_id=student_id, **body.model_dump())
+    await db.workouts.insert_one(wk.model_dump())
+    return wk
+
+
+@api.post("/coach/students/{student_id}/workouts/generate", response_model=Workout)
+async def assign_generated_workout(student_id: str, body: WorkoutGenerateInput, coach: dict = Depends(get_current_coach)):
+    await _get_owned_student(student_id, coach)
+    return await _generate_single_workout(body, student_id)
+
+
+@api.put("/coach/students/{student_id}/nutrition-goal", response_model=UserPublic)
+async def set_student_nutrition_goal(
+    student_id: str, body: CoachNutritionGoalInput, coach: dict = Depends(get_current_coach)
+):
+    await _get_owned_student(student_id, coach)
+    updates = {
+        "calorie_goal": body.calorie_goal,
+        "calorie_goal_auto": False,
+        "calorie_last_adjust_at": now_utc(),
+        "calorie_last_adjust_reason": f"Objectif défini par le coach {coach['name']}.",
+        "protein_goal_g": body.protein_goal_g,
+        "carbs_goal_g": body.carbs_goal_g,
+        "fat_goal_g": body.fat_goal_g,
+        "fiber_goal_g": body.fiber_goal_g,
+    }
+    await db.users.update_one({"id": student_id}, {"$set": updates})
+    updated = await db.users.find_one({"id": student_id}, {"_id": 0, "password_hash": 0})
     return public_user(updated)
 
 
@@ -698,8 +894,7 @@ async def delete_workout(workout_id: str, user: dict = Depends(get_current_user)
     return {"ok": True}
 
 
-@api.post("/workouts/generate", response_model=Workout)
-async def generate_workout(body: WorkoutGenerateInput, user: dict = Depends(get_current_user)):
+async def _generate_single_workout(body: WorkoutGenerateInput, target_user_id: str) -> Workout:
     system = (
         "Tu es un coach sportif expert. Tu réponds STRICTEMENT en JSON valide, "
         "sans texte hors JSON, sans code fences. Toutes les valeurs textuelles sont en français."
@@ -718,7 +913,7 @@ async def generate_workout(body: WorkoutGenerateInput, user: dict = Depends(get_
         "Inclus 5 à 8 exercices adaptés. Reps peut être un nombre ou une durée. "
         "Notes = conseil bref sur la forme."
     )
-    data = await ask_llm_json(system, prompt, f"gen-workout-{user['id']}-{uuid.uuid4()}", max_tokens=2500)
+    data = await ask_llm_json(system, prompt, f"gen-workout-{target_user_id}-{uuid.uuid4()}", max_tokens=2500)
 
     exercises = []
     for ex in data.get("exercises", []):
@@ -734,13 +929,18 @@ async def generate_workout(body: WorkoutGenerateInput, user: dict = Depends(get_
             continue
 
     wk = Workout(
-        user_id=user["id"],
+        user_id=target_user_id,
         title=str(data.get("title", f"Programme {body.goal}"))[:80],
         description=str(data.get("description", ""))[:400],
         exercises=exercises,
     )
     await db.workouts.insert_one(wk.model_dump())
     return wk
+
+
+@api.post("/workouts/generate", response_model=Workout)
+async def generate_workout(body: WorkoutGenerateInput, user: dict = Depends(get_current_user)):
+    return await _generate_single_workout(body, user["id"])
 
 
 # ============================================================================
