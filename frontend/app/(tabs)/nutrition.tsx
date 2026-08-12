@@ -715,10 +715,15 @@ export default function NutritionScreen() {
                     <Pressable
                       key={p}
                       onPress={() => setSuggestPref((prev) => (prev === p ? "" : p))}
-                      style={[styles.chip, suggestPref === p && styles.chipActive]}
+                      style={[styles.presetChip, suggestPref === p && styles.presetChipActive]}
                       testID={`meal-ai-preset-${p}`}
                     >
-                      <Text style={[styles.chipTxt, suggestPref === p && styles.chipTxtActive]}>{p}</Text>
+                      <Text
+                        style={[styles.presetChipTxt, suggestPref === p && styles.presetChipTxtActive]}
+                        numberOfLines={1}
+                      >
+                        {p}
+                      </Text>
                     </Pressable>
                   ))}
                 </View>
@@ -1037,6 +1042,14 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
   chipTxt: { fontSize: font.sm, color: colors.onSurface, textTransform: "capitalize" },
   chipTxtActive: { color: colors.onBrandPrimary },
+  presetChip: {
+    flexShrink: 0, alignSelf: "flex-start",
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+    borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
+  },
+  presetChipActive: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
+  presetChipTxt: { fontSize: font.sm, color: colors.onSurface },
+  presetChipTxtActive: { color: colors.onBrandPrimary },
   err: { color: colors.error, textAlign: "center", marginTop: spacing.xs },
   sugCard: {
     backgroundColor: colors.surfaceSecondary, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm,
