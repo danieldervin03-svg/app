@@ -312,6 +312,14 @@ class Meal(BaseModel):
     meal_type: Literal["petit-déjeuner", "déjeuner", "dîner", "collation"]
     date: str  # YYYY-MM-DD
     created_at: str = Field(default_factory=now_utc)
+    # Optional quantity basis, so the logged quantity can later be edited and
+    # have calories/macros recalculated automatically instead of retyped by hand.
+    quantity_g: Optional[float] = None
+    calories_per_100g: Optional[float] = None
+    protein_per_100g: Optional[float] = None
+    carbs_per_100g: Optional[float] = None
+    fat_per_100g: Optional[float] = None
+    fiber_per_100g: Optional[float] = None
 
 
 class MealCreate(BaseModel):
@@ -323,6 +331,12 @@ class MealCreate(BaseModel):
     fiber_g: Optional[float] = Field(default=None, ge=0, le=150)
     meal_type: Literal["petit-déjeuner", "déjeuner", "dîner", "collation"]
     date: Optional[str] = None
+    quantity_g: Optional[float] = Field(default=None, ge=0, le=5000)
+    calories_per_100g: Optional[float] = Field(default=None, ge=0, le=2000)
+    protein_per_100g: Optional[float] = Field(default=None, ge=0, le=200)
+    carbs_per_100g: Optional[float] = Field(default=None, ge=0, le=200)
+    fat_per_100g: Optional[float] = Field(default=None, ge=0, le=200)
+    fiber_per_100g: Optional[float] = Field(default=None, ge=0, le=100)
 
 
 class MealUpdate(BaseModel):
@@ -333,6 +347,7 @@ class MealUpdate(BaseModel):
     fat_g: Optional[float] = Field(default=None, ge=0, le=400)
     fiber_g: Optional[float] = Field(default=None, ge=0, le=150)
     meal_type: Optional[Literal["petit-déjeuner", "déjeuner", "dîner", "collation"]] = None
+    quantity_g: Optional[float] = Field(default=None, ge=0, le=5000)
 
 
 class MealSuggestInput(BaseModel):
@@ -1643,6 +1658,12 @@ async def create_meal(body: MealCreate, user: dict = Depends(get_current_user)):
         fiber_g=body.fiber_g,
         meal_type=body.meal_type,
         date=body.date or datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        quantity_g=body.quantity_g,
+        calories_per_100g=body.calories_per_100g,
+        protein_per_100g=body.protein_per_100g,
+        carbs_per_100g=body.carbs_per_100g,
+        fat_per_100g=body.fat_per_100g,
+        fiber_per_100g=body.fiber_per_100g,
     )
     await db.meals.insert_one(m.model_dump())
     return m
@@ -1712,6 +1733,21 @@ async def update_meal(meal_id: str, body: MealUpdate, user: dict = Depends(get_c
     updates = body.model_dump(exclude_unset=True)
     if "name" in updates and updates["name"] is not None:
         updates["name"] = updates["name"].strip()
+
+    # If the quantity changed and this meal has a per-100g basis (from a barcode
+    # scan or an AI estimate), recompute calories/macros automatically instead of
+    # requiring the user to retype every value by hand.
+    if "quantity_g" in updates and updates["quantity_g"] is not None and doc.get("calories_per_100g") is not None:
+        factor = updates["quantity_g"] / 100.0
+        for field, per100_key in [
+            ("calories", "calories_per_100g"), ("protein_g", "protein_per_100g"),
+            ("carbs_g", "carbs_per_100g"), ("fat_g", "fat_per_100g"), ("fiber_g", "fiber_per_100g"),
+        ]:
+            per100 = doc.get(per100_key)
+            if per100 is not None:
+                val = round(per100 * factor, 1)
+                updates[field] = int(round(val)) if field == "calories" else val
+
     if updates:
         await db.meals.update_one({"id": meal_id}, {"$set": updates})
     updated = await db.meals.find_one({"id": meal_id}, {"_id": 0})
@@ -1807,6 +1843,7 @@ async def estimate_meal(body: MealEstimateInput, user: dict = Depends(get_curren
         '"carbs_g": number, '
         '"fat_g": number, '
         '"fiber_g": number, '
+        '"total_weight_g": int (poids total estimé de l\'ensemble du repas en grammes, somme de tous les composants), '
         '"meal_type": "petit-déjeuner|déjeuner|dîner|collation", '
         '"breakdown": "string court listant les composants et leur poids estimé, ex: \'150g riz, 120g '
         'poulet, 1c.à.s huile\'"}'
@@ -1818,16 +1855,37 @@ async def estimate_meal(body: MealEstimateInput, user: dict = Depends(get_curren
     mt = str(data.get("meal_type", "déjeuner")).lower()
     if mt not in ("petit-déjeuner", "déjeuner", "dîner", "collation"):
         mt = "déjeuner"
-    return {
+    calories = max(0, int(data.get("calories", 0)))
+    protein_g = round(max(0.0, float(data.get("protein_g", 0) or 0)), 1)
+    carbs_g = round(max(0.0, float(data.get("carbs_g", 0) or 0)), 1)
+    fat_g = round(max(0.0, float(data.get("fat_g", 0) or 0)), 1)
+    fiber_g = round(max(0.0, float(data.get("fiber_g", 0) or 0)), 1)
+    total_weight_g = data.get("total_weight_g")
+    try:
+        total_weight_g = float(total_weight_g) if total_weight_g else None
+        if total_weight_g and total_weight_g <= 0:
+            total_weight_g = None
+    except (TypeError, ValueError):
+        total_weight_g = None
+
+    result = {
         "name": str(data.get("name", "Repas"))[:80],
-        "calories": max(0, int(data.get("calories", 0))),
-        "protein_g": round(max(0.0, float(data.get("protein_g", 0) or 0)), 1),
-        "carbs_g": round(max(0.0, float(data.get("carbs_g", 0) or 0)), 1),
-        "fat_g": round(max(0.0, float(data.get("fat_g", 0) or 0)), 1),
-        "fiber_g": round(max(0.0, float(data.get("fiber_g", 0) or 0)), 1),
+        "calories": calories,
+        "protein_g": protein_g,
+        "carbs_g": carbs_g,
+        "fat_g": fat_g,
+        "fiber_g": fiber_g,
         "meal_type": mt,
         "breakdown": str(data.get("breakdown", ""))[:200],
     }
+    if total_weight_g:
+        result["quantity_g"] = round(total_weight_g)
+        result["calories_per_100g"] = round(calories / total_weight_g * 100, 1)
+        result["protein_per_100g"] = round(protein_g / total_weight_g * 100, 1)
+        result["carbs_per_100g"] = round(carbs_g / total_weight_g * 100, 1)
+        result["fat_per_100g"] = round(fat_g / total_weight_g * 100, 1)
+        result["fiber_per_100g"] = round(fiber_g / total_weight_g * 100, 1)
+    return result
 
 
 @api.post("/meals/scan-food")

@@ -60,6 +60,7 @@ export default function BarcodeScannerScreen() {
     if (!per100g) return;
     setSaving(true);
     try {
+      const g = parseFloat(grams.replace(",", ".")) || 0;
       await api.createMeal({
         name: productName || "Produit scanné",
         calories: Math.round(scale(per100g.calories) ?? 0),
@@ -68,6 +69,12 @@ export default function BarcodeScannerScreen() {
         fat_g: scale(per100g.fat_g),
         fiber_g: scale(per100g.fiber_g),
         meal_type: mealType,
+        quantity_g: g,
+        calories_per_100g: per100g.calories ?? undefined,
+        protein_per_100g: per100g.protein_g ?? undefined,
+        carbs_per_100g: per100g.carbs_g ?? undefined,
+        fat_per_100g: per100g.fat_g ?? undefined,
+        fiber_per_100g: per100g.fiber_g ?? undefined,
       });
       router.back();
     } catch {} finally {

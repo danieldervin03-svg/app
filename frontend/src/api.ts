@@ -171,6 +171,12 @@ export type Meal = {
   meal_type: "petit-déjeuner" | "déjeuner" | "dîner" | "collation";
   date: string;
   created_at: string;
+  quantity_g?: number | null;
+  calories_per_100g?: number | null;
+  protein_per_100g?: number | null;
+  carbs_per_100g?: number | null;
+  fat_per_100g?: number | null;
+  fiber_per_100g?: number | null;
 };
 
 export type Measurement = {
@@ -360,11 +366,17 @@ export const api = {
     fiber_g?: number;
     meal_type: Meal["meal_type"];
     date?: string;
+    quantity_g?: number;
+    calories_per_100g?: number;
+    protein_per_100g?: number;
+    carbs_per_100g?: number;
+    fat_per_100g?: number;
+    fiber_per_100g?: number;
   }) => request<Meal>("/meals", { method: "POST", body }),
   deleteMeal: (id: string) => request<{ ok: boolean }>(`/meals/${id}`, { method: "DELETE" }),
   updateMeal: (id: string, body: {
     name?: string; calories?: number; protein_g?: number; carbs_g?: number;
-    fat_g?: number; fiber_g?: number; meal_type?: Meal["meal_type"];
+    fat_g?: number; fiber_g?: number; meal_type?: Meal["meal_type"]; quantity_g?: number;
   }) => request<Meal>(`/meals/${id}`, { method: "PUT", body }),
   toggleMealFavorite: (id: string) => request<Meal>(`/meals/${id}/favorite`, { method: "PATCH" }),
   quickAddMeals: () => request<{ favorites: Meal[]; recent: Meal[] }>("/meals/quick-add"),
@@ -390,6 +402,12 @@ export const api = {
       fiber_g: number;
       meal_type: Meal["meal_type"];
       breakdown: string;
+      quantity_g?: number;
+      calories_per_100g?: number;
+      protein_per_100g?: number;
+      carbs_per_100g?: number;
+      fat_per_100g?: number;
+      fiber_per_100g?: number;
     }>("/meals/estimate", { method: "POST", body: { description } }),
   scanMenu: (image_base64: string, mime_type: string) =>
     request<MenuScanResult>("/meals/scan-menu", { method: "POST", body: { image_base64, mime_type } }),

@@ -47,6 +47,10 @@ export default function NutritionScreen() {
   const [mealCarbs, setMealCarbs] = useState("");
   const [mealFat, setMealFat] = useState("");
   const [mealFiber, setMealFiber] = useState("");
+  const [mealQuantity, setMealQuantity] = useState("");
+  const [mealPer100g, setMealPer100g] = useState<{
+    calories?: number; protein?: number; carbs?: number; fat?: number; fiber?: number;
+  } | null>(null);
   const [mealType, setMealType] = useState<Meal["meal_type"]>("petit-déjeuner");
   const [mealDesc, setMealDesc] = useState("");
   const [estimating, setEstimating] = useState(false);
@@ -156,11 +160,34 @@ export default function NutritionScreen() {
       setMealFiber(String(res.fiber_g ?? ""));
       setMealType(res.meal_type);
       setBreakdown(res.breakdown);
+      if (res.quantity_g) {
+        setMealQuantity(String(res.quantity_g));
+        setMealPer100g({
+          calories: res.calories_per_100g, protein: res.protein_per_100g,
+          carbs: res.carbs_per_100g, fat: res.fat_per_100g, fiber: res.fiber_per_100g,
+        });
+      } else {
+        setMealQuantity("");
+        setMealPer100g(null);
+      }
     } catch (e: any) {
       setError(e.message ?? "Estimation impossible");
     } finally {
       setEstimating(false);
     }
+  };
+
+  const onQuantityChange = (value: string) => {
+    setMealQuantity(value);
+    if (!mealPer100g) return;
+    const g = parseFloat(value.replace(",", "."));
+    if (!Number.isFinite(g) || g < 0) return;
+    const factor = g / 100;
+    if (mealPer100g.calories != null) setMealCal(String(Math.round(mealPer100g.calories * factor)));
+    if (mealPer100g.protein != null) setMealProtein(String(Math.round(mealPer100g.protein * factor * 10) / 10));
+    if (mealPer100g.carbs != null) setMealCarbs(String(Math.round(mealPer100g.carbs * factor * 10) / 10));
+    if (mealPer100g.fat != null) setMealFat(String(Math.round(mealPer100g.fat * factor * 10) / 10));
+    if (mealPer100g.fiber != null) setMealFiber(String(Math.round(mealPer100g.fiber * factor * 10) / 10));
   };
 
   const pickAndScanFood = async (source: "camera" | "library") => {
@@ -215,6 +242,7 @@ export default function NutritionScreen() {
     setEditingMealId(null);
     setMealName(""); setMealCal(""); setMealDesc(""); setBreakdown(null);
     setMealProtein(""); setMealCarbs(""); setMealFat(""); setMealFiber("");
+    setMealQuantity(""); setMealPer100g(null);
     setMealType("petit-déjeuner");
     setError(null);
     setAddOpen(true);
@@ -232,6 +260,16 @@ export default function NutritionScreen() {
     setMealDesc("");
     setBreakdown(null);
     setError(null);
+    if (m.quantity_g != null && m.calories_per_100g != null) {
+      setMealQuantity(String(m.quantity_g));
+      setMealPer100g({
+        calories: m.calories_per_100g ?? undefined, protein: m.protein_per_100g ?? undefined,
+        carbs: m.carbs_per_100g ?? undefined, fat: m.fat_per_100g ?? undefined, fiber: m.fiber_per_100g ?? undefined,
+      });
+    } else {
+      setMealQuantity("");
+      setMealPer100g(null);
+    }
     setAddOpen(true);
   };
 
@@ -262,7 +300,8 @@ export default function NutritionScreen() {
     }
     setSaving(true);
     try {
-      const payload = {
+      const quantity_g = mealQuantity.trim() ? parseFloat(mealQuantity.replace(",", ".")) : undefined;
+      const payload: any = {
         name,
         calories,
         protein_g: mealProtein.trim() ? parseFloat(mealProtein.replace(",", ".")) : undefined,
@@ -270,14 +309,23 @@ export default function NutritionScreen() {
         fat_g: mealFat.trim() ? parseFloat(mealFat.replace(",", ".")) : undefined,
         fiber_g: mealFiber.trim() ? parseFloat(mealFiber.replace(",", ".")) : undefined,
         meal_type: mealType,
+        quantity_g,
       };
       if (editingMealId) {
         await api.updateMeal(editingMealId, payload);
       } else {
+        if (mealPer100g) {
+          payload.calories_per_100g = mealPer100g.calories;
+          payload.protein_per_100g = mealPer100g.protein;
+          payload.carbs_per_100g = mealPer100g.carbs;
+          payload.fat_per_100g = mealPer100g.fat;
+          payload.fiber_per_100g = mealPer100g.fiber;
+        }
         await api.createMeal(payload);
       }
       setMealName(""); setMealCal(""); setMealDesc(""); setBreakdown(null);
       setMealProtein(""); setMealCarbs(""); setMealFat(""); setMealFiber("");
+      setMealQuantity(""); setMealPer100g(null);
       setMealType("petit-déjeuner");
       setEditingMealId(null);
       setAddOpen(false);
@@ -635,6 +683,14 @@ export default function NutritionScreen() {
               ) : null}
 
               <Input label="Nom" placeholder="Ex : Poulet et riz" value={mealName} onChangeText={setMealName} testID="meal-name-input" />
+              <Input
+                label={mealPer100g ? "Quantité (g) — recalcule les macros auto" : "Quantité (g, facultatif)"}
+                placeholder="150"
+                keyboardType="numeric"
+                value={mealQuantity}
+                onChangeText={onQuantityChange}
+                testID="meal-quantity-input"
+              />
               <Input label="Calories" placeholder="450" keyboardType="numeric" value={mealCal} onChangeText={setMealCal} testID="meal-cal-input" />
               <View style={{ flexDirection: "row", gap: spacing.sm }}>
                 <View style={{ flex: 1 }}>
