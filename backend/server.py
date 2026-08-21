@@ -269,6 +269,7 @@ class WorkoutGenerateInput(BaseModel):
     duration_minutes: int = 45
     equipment: str = "salle de sport"
     focus: str = ""
+    discipline: Literal["musculation", "remise_en_forme", "yoga", "etirement", "calisthenics", "pilates", "cardio", "mobilite"] = "musculation"
 
 
 class ProgramGenerateInput(BaseModel):
@@ -280,6 +281,7 @@ class ProgramGenerateInput(BaseModel):
     sessions_per_week: int = Field(ge=2, le=6, default=3)
     duration_minutes: int = 45
     equipment: str = "salle de sport"
+    discipline: Literal["musculation", "remise_en_forme", "yoga", "etirement", "calisthenics", "pilates", "cardio", "mobilite"] = "musculation"
 
 
 class LogEntry(BaseModel):
@@ -1171,6 +1173,77 @@ async def delete_workout(workout_id: str, user: dict = Depends(get_current_user)
     return {"ok": True}
 
 
+def _discipline_instructions(discipline: str) -> str:
+    if discipline == "yoga":
+        return (
+            "Discipline : YOGA. Génère une séquence de postures (asanas) adaptée. "
+            "Pour chaque posture : sets=1, reps=une durée de maintien (ex: '30s', '1 min'), "
+            "rest_seconds=temps de transition vers la posture suivante (souvent court, 5-15s), "
+            "notes=conseils d'alignement, respiration, ou variante facilitée. "
+            "Aucun poids (pas de matériel de musculation). Inclus une posture d'échauffement/centrage "
+            "au début et une posture de relaxation (ex: Savasana) à la fin."
+        )
+    if discipline == "etirement":
+        return (
+            "Discipline : ÉTIREMENT / STRETCHING. Génère une séquence d'étirements ciblant les "
+            "principaux groupes musculaires (adaptée au focus donné s'il y en a un). Pour chaque "
+            "étirement : sets=1 ou 2 (répéter des deux côtés si unilatéral), reps=une durée de maintien "
+            "(ex: '20s', '30s' par côté), rest_seconds=court temps de transition (5-10s), "
+            "notes=conseils de respiration et d'intensité (jamais forcer, sensation d'étirement doux "
+            "pas de douleur). Aucun matériel nécessaire sauf mention contraire. Enchaîne des étirements "
+            "complémentaires (ex: haut du corps puis bas du corps) pour une séance équilibrée."
+        )
+    if discipline == "calisthenics":
+        return (
+            "Discipline : CALISTHENICS / STREET WORKOUT. Renforcement avancé au poids du corps, "
+            "progressions vers des figures (tractions, dips, pompes lestées ou surélevées, gainage "
+            "dynamique, exercices vers muscle-up/handstand selon le niveau). sets=nombre de séries, "
+            "reps=un nombre ou une durée (ex: '8-12' ou '20s'), rest_seconds=60 à 120s selon "
+            "l'intensité. notes=conseils de technique et progression/régression selon le niveau. "
+            "Aucun poids externe requis (élastiques ou lest possible en option)."
+        )
+    if discipline == "pilates":
+        return (
+            "Discipline : PILATES. Mouvements contrôlés centrés sur le gainage profond, la posture "
+            "et la précision d'exécution (respiration synchronisée avec le mouvement). sets=1 à 2, "
+            "reps=un nombre de répétitions lentes et contrôlées (ex: '8-10') ou une durée de maintien. "
+            "rest_seconds=court (10-20s), les enchaînements restent fluides. notes=conseils "
+            "d'engagement du centre (transverse, plancher pelvien) et d'alignement postural. "
+            "Aucun matériel nécessaire (tapis de sol), sauf mention contraire (ex: ballon, élastique)."
+        )
+    if discipline == "cardio":
+        return (
+            "Discipline : CARDIO / COURSE À PIED. Séance de cardio structurée adaptée au niveau "
+            "(fractionné, endurance fondamentale, ou mixte selon l'objectif). Utilise le format "
+            "d'exercice pour représenter des blocs (ex: name='Échauffement', 'Fractionné 400m', "
+            "'Récupération active', 'Retour au calme'). sets=nombre de répétitions du bloc si "
+            "fractionné, reps=une durée ou distance (ex: '5 min', '400m'), rest_seconds=temps de "
+            "récupération entre les blocs. notes=allure/intensité cible (ex: 'allure confortable, "
+            "conversation possible' ou 'effort quasi maximal')."
+        )
+    if discipline == "mobilite":
+        return (
+            "Discipline : MOBILITÉ ARTICULAIRE. Exercices de mobilisation active des articulations "
+            "(épaules, hanches, colonne, chevilles...) pour l'amplitude de mouvement et la prévention "
+            "des blessures — différent des étirements statiques passifs, ici les mouvements sont "
+            "dynamiques et contrôlés. sets=1 à 2, reps=un nombre de répétitions par sens/côté (ex: "
+            "'10 par côté'), rest_seconds=court (10-15s). notes=amplitude à respecter, ne jamais forcer "
+            "au-delà d'une sensation confortable."
+        )
+    if discipline == "remise_en_forme":
+        return (
+            "Discipline : REMISE EN FORME (fitness général, pas de musculation lourde). Mélange "
+            "d'exercices au poids du corps, de cardio léger et de mobilité, accessibles et progressifs. "
+            "sets=nombre de tours/séries, reps=un nombre de répétitions OU une durée (ex: '30s'), "
+            "rest_seconds=temps de récupération entre les tours. Pas de charges lourdes ; si du matériel "
+            "est utilisé, reste léger (élastiques, poids légers, poids du corps)."
+        )
+    return (
+        "Discipline : MUSCULATION. Exercices de renforcement musculaire classiques avec charges "
+        "(ou poids du corps si pas de matériel), sets/reps/repos adaptés à l'objectif."
+    )
+
+
 async def _generate_single_workout(body: WorkoutGenerateInput, target_user_id: str) -> Workout:
     system = (
         "Tu es un coach sportif expert. Tu réponds STRICTEMENT en JSON valide, "
@@ -1178,6 +1251,7 @@ async def _generate_single_workout(body: WorkoutGenerateInput, target_user_id: s
     )
     prompt = (
         f"Génère un programme d'entraînement personnalisé.\n"
+        f"{_discipline_instructions(body.discipline)}\n\n"
         f"Objectif: {body.goal}\n"
         f"Niveau: {body.level}\n"
         f"Durée: {body.duration_minutes} minutes\n"
@@ -1187,7 +1261,7 @@ async def _generate_single_workout(body: WorkoutGenerateInput, target_user_id: s
         '{"title": "string court", "description": "string court explicatif", '
         '"exercises": [{"name": "string", "sets": int, "reps": "string ex: 10 ou 30s", '
         '"rest_seconds": int, "notes": "string court conseil forme"}]}\n\n'
-        "Inclus 5 à 8 exercices adaptés. Reps peut être un nombre ou une durée. "
+        "Inclus 5 à 8 exercices/postures adaptés. Reps peut être un nombre ou une durée. "
         "Notes = conseil bref sur la forme."
     )
     data = await ask_llm_json(system, prompt, f"gen-workout-{target_user_id}-{uuid.uuid4()}", max_tokens=2500)
@@ -1234,7 +1308,13 @@ async def generate_program(body: ProgramGenerateInput, user: dict = Depends(get_
         "Tu es un coach sportif expert. Tu réponds STRICTEMENT en JSON valide, "
         "sans texte hors JSON ni code fence. Toutes les valeurs textuelles sont en français."
     )
-    if body.program_type == "full_body":
+    if body.discipline != "musculation":
+        style = (
+            f"{_discipline_instructions(body.discipline)}\n"
+            f"Génère {body.sessions_per_week} séances pour la semaine, avec une variation raisonnable "
+            "de contenu d'une séance à l'autre (éviter de répéter exactement les mêmes exercices/postures)."
+        )
+    elif body.program_type == "full_body":
         style = (
             f"Génère {body.sessions_per_week} séances FULL BODY identiques dans leur structure mais "
             "avec exercices variés (rotation d'exercices sollicitant tout le corps à chaque séance)."

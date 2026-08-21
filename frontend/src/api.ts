@@ -319,6 +319,7 @@ export const api = {
     duration_minutes: number;
     equipment: string;
     focus?: string;
+    discipline?: "musculation" | "remise_en_forme" | "yoga" | "etirement" | "calisthenics" | "pilates" | "cardio" | "mobilite";
   }) => request<Workout>("/workouts/generate", { method: "POST", body }),
   generateProgram: (body: {
     goal: string;
@@ -327,6 +328,7 @@ export const api = {
     sessions_per_week: number;
     duration_minutes: number;
     equipment: string;
+    discipline?: "musculation" | "remise_en_forme" | "yoga" | "etirement" | "calisthenics" | "pilates" | "cardio" | "mobilite";
   }) => request<Workout[]>("/workouts/generate-program", { method: "POST", body }),
   logSession: (id: string, entries: LogEntry[]) =>
     request<{ workout: Workout }>(`/workouts/${id}/log`, { method: "POST", body: { entries } }),

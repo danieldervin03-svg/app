@@ -14,6 +14,16 @@ const LEVELS = ["débutant", "intermédiaire", "avancé"] as const;
 const DURATIONS = [30, 45, 60, 90];
 const EQUIP = ["poids du corps", "haltères", "salle de sport"];
 const SESSIONS_PER_WEEK = [2, 3, 4, 5, 6];
+const DISCIPLINES: { key: "musculation" | "remise_en_forme" | "yoga" | "etirement" | "calisthenics" | "pilates" | "cardio" | "mobilite"; label: string; sub: string; icon: any }[] = [
+  { key: "musculation", label: "Musculation", sub: "Renforcement avec ou sans charges", icon: "barbell-outline" },
+  { key: "remise_en_forme", label: "Remise en forme", sub: "Cardio léger, mobilité, poids du corps", icon: "walk-outline" },
+  { key: "cardio", label: "Cardio / Course", sub: "Fractionné, endurance, allure", icon: "speedometer-outline" },
+  { key: "calisthenics", label: "Calisthenics", sub: "Figures et force au poids du corps", icon: "fitness-outline" },
+  { key: "pilates", label: "Pilates", sub: "Gainage profond, posture, précision", icon: "body-outline" },
+  { key: "yoga", label: "Yoga", sub: "Postures, souplesse, respiration", icon: "leaf-outline" },
+  { key: "etirement", label: "Étirement", sub: "Souplesse et récupération musculaire", icon: "accessibility-outline" },
+  { key: "mobilite", label: "Mobilité articulaire", sub: "Amplitude, prévention des blessures", icon: "sync-outline" },
+];
 const TYPES: { key: "full_body" | "split" | "upper_lower" | "ppl" | "bro_split" | "force" | "circuit"; label: string; sub: string }[] = [
   { key: "full_body", label: "Full body", sub: "Corps entier à chaque séance" },
   { key: "upper_lower", label: "Haut / Bas", sub: "Alterne haut du corps et bas du corps" },
@@ -27,6 +37,7 @@ const TYPES: { key: "full_body" | "split" | "upper_lower" | "ppl" | "bro_split" 
 export default function GenerateWorkout() {
   const router = useRouter();
   const { user } = useAuth();
+  const [discipline, setDiscipline] = useState<"musculation" | "remise_en_forme" | "yoga" | "etirement" | "calisthenics" | "pilates" | "cardio" | "mobilite">("musculation");
   const [programType, setProgramType] = useState<"full_body" | "split" | "upper_lower" | "ppl" | "bro_split" | "force" | "circuit">("full_body");
   const [sessions, setSessions] = useState(3);
   const [goal, setGoal] = useState(user?.fitness_goal ?? "prise de masse");
@@ -51,6 +62,7 @@ export default function GenerateWorkout() {
         sessions_per_week: sessions,
         duration_minutes: duration,
         equipment,
+        discipline,
       });
       if (list.length > 0) {
         router.replace(`/(tabs)/workouts` as any);
@@ -71,7 +83,7 @@ export default function GenerateWorkout() {
           contentFit="cover"
         />
         <LinearGradient
-          colors={["rgba(255,255,255,0)", "rgba(255,255,255,0.9)", colors.surface]}
+          colors={["rgba(26,27,30,0)", "rgba(26,27,30,0.9)", colors.surface]}
           style={StyleSheet.absoluteFill}
         />
         <SafeAreaView style={styles.heroInner}>
@@ -80,29 +92,52 @@ export default function GenerateWorkout() {
           </Pressable>
           <View style={{ flex: 1 }} />
           <Text style={styles.title}>Programme IA</Text>
-          <Text style={styles.subtitle}>{"Choisissez le type et le nombre de séances, l'IA construit tout."}</Text>
+          <Text style={styles.subtitle}>{"Choisissez la discipline, le type et le nombre de séances, l'IA construit tout."}</Text>
         </SafeAreaView>
       </View>
 
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          <Text style={styles.label}>Type de programme</Text>
-          {TYPES.map((t) => (
+          <Text style={styles.label}>Discipline</Text>
+          {DISCIPLINES.map((d) => (
             <Pressable
-              key={t.key}
-              onPress={() => setProgramType(t.key)}
-              style={[styles.typeCard, programType === t.key && styles.typeCardActive]}
-              testID={`gen-type-${t.key}`}
+              key={d.key}
+              onPress={() => setDiscipline(d.key)}
+              style={[styles.typeCard, discipline === d.key && styles.typeCardActive]}
+              testID={`gen-discipline-${d.key}`}
             >
               <View style={styles.radio}>
-                {programType === t.key ? <View style={styles.radioDot} /> : null}
+                {discipline === d.key ? <View style={styles.radioDot} /> : null}
               </View>
+              <Ionicons name={d.icon} size={18} color={discipline === d.key ? colors.brandPrimary : colors.onSurfaceSecondary} style={{ marginRight: spacing.xs }} />
               <View style={{ flex: 1 }}>
-                <Text style={styles.typeLbl}>{t.label}</Text>
-                <Text style={styles.typeSub}>{t.sub}</Text>
+                <Text style={styles.typeLbl}>{d.label}</Text>
+                <Text style={styles.typeSub}>{d.sub}</Text>
               </View>
             </Pressable>
           ))}
+
+          {discipline === "musculation" ? (
+            <>
+              <Text style={styles.label}>Type de programme</Text>
+              {TYPES.map((t) => (
+                <Pressable
+                  key={t.key}
+                  onPress={() => setProgramType(t.key)}
+                  style={[styles.typeCard, programType === t.key && styles.typeCardActive]}
+                  testID={`gen-type-${t.key}`}
+                >
+                  <View style={styles.radio}>
+                    {programType === t.key ? <View style={styles.radioDot} /> : null}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.typeLbl}>{t.label}</Text>
+                    <Text style={styles.typeSub}>{t.sub}</Text>
+                  </View>
+                </Pressable>
+              ))}
+            </>
+          ) : null}
 
           <Text style={styles.label}>Séances par semaine</Text>
           <View style={styles.chips}>
