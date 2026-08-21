@@ -936,7 +936,7 @@ export default function NutritionScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "transparent" },
+  container: { flex: 1, backgroundColor: colors.surface },
   header: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
   title: { fontSize: font.xxl, color: colors.onSurface, fontWeight: "500" },
   list: { padding: spacing.lg, paddingBottom: 120 },
