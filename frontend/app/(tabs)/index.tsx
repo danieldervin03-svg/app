@@ -3,14 +3,18 @@ import { View, Text, StyleSheet, ScrollView, RefreshControl, Pressable } from "r
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
+import Svg, { Circle } from "react-native-svg";
 
 import { colors, font, radius, spacing } from "@/src/theme";
-import { Card } from "@/src/components/ui";
 import { CoachChat } from "@/src/components/coach-chat";
 import { api, TodaySummary } from "@/src/api";
 import { useAuth } from "@/src/auth";
+
+const RING_SIZE = 64;
+const RING_STROKE = 6;
+const RING_R = (RING_SIZE - RING_STROKE) / 2;
+const RING_CIRC = 2 * Math.PI * RING_R;
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -60,148 +64,138 @@ export default function HomeScreen() {
     return <View style={{ flex: 1, backgroundColor: colors.surface }} />;
   }
 
+  const macros = [
+    { key: "protein", label: "Protéines", color: "#FF6B6B", remaining: summary?.protein_remaining_g, goal: summary?.protein_goal_g },
+    { key: "carbs", label: "Glucides", color: colors.brandPrimary, remaining: summary?.carbs_remaining_g, goal: summary?.carbs_goal_g },
+    { key: "fat", label: "Lipides", color: "#5FA8FF", remaining: summary?.fat_remaining_g, goal: summary?.fat_goal_g },
+    { key: "fiber", label: "Fibres", color: "#3DDC9C", remaining: summary?.fiber_remaining_g, goal: summary?.fiber_goal_g },
+  ];
+
   return (
-    <LinearGradient colors={[colors.brandTertiary, colors.surface]} style={{ flex: 1 }}>
     <SafeAreaView style={styles.container} testID="home-screen">
       <ScrollView
         contentContainerStyle={styles.scroll}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brandPrimary} />}
       >
-        <LinearGradient
-          colors={[colors.onBrandSecondary, colors.brand, colors.brandSecondary]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.hero}
-        >
-          <Ionicons name="barbell" size={140} color="rgba(255,255,255,0.10)" style={styles.heroDecor} />
+        <Text style={styles.date}>{today.charAt(0).toUpperCase() + today.slice(1)}</Text>
+        <Text style={styles.hello} testID="home-greeting">Bonjour, {user?.name}</Text>
 
-          <Text style={styles.date}>{today.charAt(0).toUpperCase() + today.slice(1)}</Text>
-          <Text style={styles.hello} testID="home-greeting">Bonjour {user?.name} 👋</Text>
+        {!user?.sex || !user?.age || !user?.height_cm || !user?.weight_kg ? (
+          <Pressable
+            style={styles.profileBanner}
+            onPress={() => router.push("/(tabs)/profile")}
+            testID="home-profile-banner"
+          >
+            <Ionicons name="information-circle" size={20} color={colors.brandPrimary} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.bannerTitle}>Personnalisez votre objectif calorique</Text>
+              <Text style={styles.bannerSub}>Renseignez sexe, âge, taille, poids pour un calcul précis.</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.onSurfaceSecondary} />
+          </Pressable>
+        ) : null}
 
-          {!user?.sex || !user?.age || !user?.height_cm || !user?.weight_kg ? (
-            <Pressable
-              style={styles.profileBanner}
-              onPress={() => router.push("/(tabs)/profile")}
-              testID="home-profile-banner"
-            >
-              <Ionicons name="information-circle" size={22} color={colors.onBrandPrimary} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.bannerTitle}>Personnalisez votre objectif calorique</Text>
-                <Text style={styles.bannerSub}>Renseignez votre profil santé (sexe, âge, taille, poids, objectif) pour un calcul précis.</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.onBrandPrimary} />
-            </Pressable>
-          ) : null}
-
-          <View style={styles.calorieCard}>
-            <Text style={styles.cardLabel}>Calories restantes</Text>
+        {/* Calorie glass card */}
+        <View style={styles.kcalCard} testID="home-kcal-card">
+          <View style={styles.glow} pointerEvents="none" />
+          <Text style={styles.cardLabel}>Calories restantes</Text>
+          <View style={styles.kcalRow}>
             <Text style={styles.calorieBig} testID="home-calories-remaining">{remaining}</Text>
-            <Text style={styles.calorieSub}>sur {goal} kcal · {consumed} consommées</Text>
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${percent * 100}%` }]} />
+            <Text style={styles.kcalGoal}>/ {goal} kcal</Text>
+          </View>
+          <Text style={styles.calorieSub}>{consumed} consommées</Text>
+
+          <View style={styles.ringRow}>
+            <View style={{ width: RING_SIZE, height: RING_SIZE }}>
+              <Svg width={RING_SIZE} height={RING_SIZE}>
+                <Circle
+                  cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={RING_R}
+                  stroke={colors.surfaceTertiary} strokeWidth={RING_STROKE} fill="none"
+                />
+                <Circle
+                  cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={RING_R}
+                  stroke={colors.brandPrimary} strokeWidth={RING_STROKE} fill="none"
+                  strokeDasharray={`${RING_CIRC * percent} ${RING_CIRC}`}
+                  strokeLinecap="round"
+                  rotation={-90}
+                  origin={`${RING_SIZE / 2}, ${RING_SIZE / 2}`}
+                />
+              </Svg>
+              <View style={styles.ringLabelWrap}>
+                <Text style={styles.ringLabel}>{Math.round(percent * 100)}%</Text>
+              </View>
             </View>
 
-            <View style={styles.macroRow}>
-              {[
-                { key: "protein", label: "Protéines", icon: "flash" as const, color: "#FB7185", remaining: summary?.protein_remaining_g, goal: summary?.protein_goal_g },
-                { key: "carbs", label: "Glucides", icon: "leaf" as const, color: "#FBBF24", remaining: summary?.carbs_remaining_g, goal: summary?.carbs_goal_g },
-                { key: "fat", label: "Lipides", icon: "water" as const, color: "#60A5FA", remaining: summary?.fat_remaining_g, goal: summary?.fat_goal_g },
-                { key: "fiber", label: "Fibres", icon: "nutrition" as const, color: "#34D399", remaining: summary?.fiber_remaining_g, goal: summary?.fiber_goal_g },
-              ].map((m) => {
+            <View style={styles.macroGrid}>
+              {macros.map((m) => {
                 const g = m.goal ?? 0;
                 const r = m.remaining ?? g;
-                const pct = g > 0 ? Math.min(1, Math.max(0, (g - r) / g)) : 0;
+                const consumedG = Math.round(g - r);
                 return (
-                  <View key={m.key} style={styles.macroItem}>
-                    <View style={styles.macroHeader}>
-                      <View style={[styles.macroIconDot, { backgroundColor: m.color }]}>
-                        <Ionicons name={m.icon} size={11} color="#FFF" />
-                      </View>
-                      <Text style={[styles.macroValue, r < 0 && { color: "#FEE2E2" }]}>
-                        {r < 0 ? `+${Math.round(-r)}g` : `${Math.round(r)}g`}
-                      </Text>
-                    </View>
-                    <Text style={styles.macroLabel}>{m.label}</Text>
-                    <View style={styles.macroBarTrack}>
-                    <View style={[styles.macroBarFill, { width: `${pct * 100}%`, backgroundColor: m.color }]} />
+                  <View key={m.key} style={styles.macroLine}>
+                    <View style={[styles.macroDot, { backgroundColor: m.color }]} />
+                    <Text style={styles.macroTxt}>
+                      <Text style={styles.macroTxtBold}>{consumedG}g</Text> {m.label}
+                    </Text>
                   </View>
-                </View>
-              );
-            })}
+                );
+              })}
+            </View>
           </View>
-          </View>
-        </LinearGradient>
+        </View>
 
+        {/* Next workout */}
+        <Text style={styles.sectionTitle}>Prochain entraînement</Text>
         <Pressable
           onPress={() => (summary?.next_workout ? router.push(`/workout/${summary.next_workout.id}` as any) : router.push("/(tabs)/workouts"))}
           testID="home-next-workout"
         >
           <View style={styles.workoutCard}>
-            <Image
-              source="https://images.pexels.com/photos/36717701/pexels-photo-36717701.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"
-              style={StyleSheet.absoluteFill}
-              contentFit="cover"
-            />
-            <LinearGradient
-              colors={["rgba(17,24,39,0.15)", "rgba(17,24,39,0.75)"]}
-              style={StyleSheet.absoluteFill}
-            />
-            <View style={styles.workoutInner}>
-              <Text style={styles.workoutOverline}>Prochain entraînement</Text>
-              <Text style={styles.workoutTitle} numberOfLines={2}>
-                {summary?.next_workout?.title ?? "Aucun entraînement planifié"}
-              </Text>
-              <Text style={styles.workoutSub}>
-                {summary?.next_workout
-                  ? `${summary.next_workout.exercises.length} exercices`
-                  : "Créez votre premier programme"}
-              </Text>
-            </View>
+            <View style={styles.workoutGlow} pointerEvents="none" />
+            <Text style={styles.workoutTag}>
+              {summary?.next_workout ? `${summary.next_workout.exercises.length} exercices · Aujourd'hui` : "Aucun programme"}
+            </Text>
+            <Text style={styles.workoutTitle} numberOfLines={2}>
+              {summary?.next_workout?.title ?? "Créez votre premier programme"}
+            </Text>
           </View>
         </Pressable>
 
-        <View style={styles.row}>
-          <Card style={styles.statCard}>
-            <LinearGradient colors={[colors.brand, colors.brandPrimary]} style={styles.iconWrap}>
-              <Ionicons name="flame-outline" size={20} color={colors.onBrandPrimary} />
-            </LinearGradient>
-            <Text style={styles.statValue}>{summary?.meals_today ?? 0}</Text>
-            <Text style={styles.statLabel}>{"Repas aujourd'hui"}</Text>
-          </Card>
-          <Card style={styles.statCard}>
-            <LinearGradient colors={[colors.brand, colors.brandPrimary]} style={styles.iconWrap}>
-              <Ionicons name="barbell-outline" size={20} color={colors.onBrandPrimary} />
-            </LinearGradient>
-            <Text style={styles.statValue}>{summary?.workouts_done_this_week ?? 0}</Text>
-            <Text style={styles.statLabel}>Séances / semaine</Text>
-          </Card>
+        {/* Quick actions */}
+        <View style={styles.quickRow}>
+          <Pressable style={styles.quickBtn} onPress={() => router.push("/(tabs)/nutrition")} testID="home-quick-meal">
+            <View style={styles.quickIcon}>
+              <Ionicons name="add" size={16} color={colors.onBrandPrimary} />
+            </View>
+            <Text style={styles.quickLbl}>Ajouter un repas</Text>
+          </Pressable>
+          <Pressable style={styles.quickBtn} onPress={() => setCoachOpen(true)} testID="home-quick-coach">
+            <View style={styles.quickIcon}>
+              <Ionicons name="chatbubble-ellipses" size={15} color={colors.onBrandPrimary} />
+            </View>
+            <Text style={styles.quickLbl}>Coach IA</Text>
+          </Pressable>
         </View>
+        <Pressable
+          style={styles.quickBtnWide}
+          onPress={() => router.push("/workout/generate" as any)}
+          testID="home-quick-generate"
+        >
+          <Ionicons name="sparkles-outline" size={16} color={colors.brandPrimary} />
+          <Text style={styles.quickWideTxt}>Générer un programme IA</Text>
+        </Pressable>
 
-        <View style={styles.quickActions}>
-          <Pressable
-            style={styles.quickBtn}
-            onPress={() => router.push("/workout/generate" as any)}
-            testID="home-quick-generate"
-          >
-            <Ionicons name="sparkles-outline" size={18} color={colors.brandPrimary} />
-            <Text style={styles.quickTxt}>Générer un programme IA</Text>
-          </Pressable>
-          <Pressable
-            style={styles.quickBtn}
-            onPress={() => router.push("/(tabs)/nutrition")}
-            testID="home-quick-meal"
-          >
-            <Ionicons name="restaurant-outline" size={18} color={colors.brandPrimary} />
-            <Text style={styles.quickTxt}>Logger un repas</Text>
-          </Pressable>
-          <Pressable
-            style={styles.quickBtn}
-            onPress={() => setCoachOpen(true)}
-            testID="home-quick-coach"
-          >
-            <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.brandPrimary} />
-            <Text style={styles.quickTxt}>Parler au Coach IA</Text>
-          </Pressable>
+        {/* Weekly stats */}
+        <Text style={styles.sectionTitle}>Cette semaine</Text>
+        <View style={styles.statGrid}>
+          <View style={styles.statCard}>
+            <Text style={[styles.statVal, styles.statAccent]}>{summary?.workouts_done_this_week ?? 0}</Text>
+            <Text style={styles.statLbl}>Séances</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statVal}>{summary?.meals_today ?? 0}</Text>
+            <Text style={styles.statLbl}>{"Repas aujourd'hui"}</Text>
+          </View>
         </View>
 
         {coachChatSummary?.has_coach ? (
@@ -229,45 +223,99 @@ export default function HomeScreen() {
 
       <CoachChat visible={coachOpen} onClose={() => setCoachOpen(false)} />
     </SafeAreaView>
-    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "transparent" },
+  container: { flex: 1, backgroundColor: colors.surface },
   scroll: { padding: spacing.lg, paddingBottom: spacing.xxxl },
-  hero: {
-    borderRadius: radius.lg, padding: spacing.lg,
-    overflow: "hidden", position: "relative",
-  },
-  heroDecor: { position: "absolute", top: -20, right: -20, transform: [{ rotate: "-18deg" }] },
-  date: { fontSize: font.sm, color: "rgba(255,255,255,0.8)", textTransform: "capitalize" },
-  hello: { fontSize: font.xxl, color: colors.onBrandPrimary, fontWeight: "600", marginTop: spacing.xs, marginBottom: spacing.lg },
+  date: { fontSize: font.sm, color: colors.onSurfaceSecondary, textTransform: "uppercase", letterSpacing: 1 },
+  hello: { fontSize: 26, color: colors.onSurface, fontWeight: "700", marginTop: 4, marginBottom: spacing.lg, letterSpacing: -0.5 },
+
   profileBanner: {
     flexDirection: "row", alignItems: "center", gap: spacing.md,
-    padding: spacing.md, marginBottom: spacing.md,
-    backgroundColor: "rgba(255,255,255,0.16)", borderRadius: radius.md,
+    padding: spacing.md, marginBottom: spacing.lg,
+    backgroundColor: colors.surfaceSecondary, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.border,
   },
-  bannerTitle: { fontSize: font.base, color: colors.onBrandPrimary, fontWeight: "500" },
-  bannerSub: { fontSize: font.sm, color: "rgba(255,255,255,0.85)", marginTop: 2 },
-  calorieCard: { alignItems: "flex-start" },
-  cardLabel: { fontSize: font.sm, color: "rgba(255,255,255,0.85)" },
-  calorieBig: { fontSize: 48, color: colors.onBrandPrimary, fontWeight: "600", marginTop: spacing.xs },
-  calorieSub: { fontSize: font.base, color: "rgba(255,255,255,0.85)", marginBottom: spacing.md },
-  progressBar: { height: 8, backgroundColor: "rgba(255,255,255,0.3)", borderRadius: radius.pill, width: "100%", overflow: "hidden" },
-  progressFill: { height: "100%", backgroundColor: colors.onBrandPrimary },
-  macroRow: { flexDirection: "row", width: "100%", gap: spacing.md, marginTop: spacing.lg },
-  macroItem: { flex: 1 },
-  macroHeader: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 2 },
-  macroIconDot: { width: 18, height: 18, borderRadius: 9, alignItems: "center", justifyContent: "center" },
-  macroValue: { fontSize: font.lg, color: colors.onBrandPrimary, fontWeight: "600" },
-  macroLabel: { fontSize: font.sm, color: "rgba(255,255,255,0.85)", marginBottom: 6 },
-  macroBarTrack: { height: 5, backgroundColor: "rgba(255,255,255,0.3)", borderRadius: radius.pill, overflow: "hidden" },
-  macroBarFill: { height: "100%", borderRadius: radius.pill },
+  bannerTitle: { fontSize: font.base, color: colors.onSurface, fontWeight: "500" },
+  bannerSub: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginTop: 2 },
+
+  kcalCard: {
+    backgroundColor: colors.surfaceSecondary, borderRadius: radius.lg,
+    borderWidth: 1, borderColor: colors.border,
+    padding: spacing.lg, overflow: "hidden", position: "relative",
+  },
+  glow: {
+    position: "absolute", top: -60, right: -60, width: 180, height: 180, borderRadius: 90,
+    backgroundColor: colors.brandPrimary, opacity: 0.12,
+  },
+  cardLabel: { fontSize: font.sm, color: colors.onSurfaceSecondary, textTransform: "uppercase", letterSpacing: 0.6 },
+  kcalRow: { flexDirection: "row", alignItems: "baseline", gap: spacing.sm, marginTop: 6 },
+  calorieBig: { fontSize: 44, color: colors.onSurface, fontWeight: "700", letterSpacing: -1.5 },
+  kcalGoal: { fontSize: font.base, color: colors.onSurfaceSecondary },
+  calorieSub: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginTop: 2 },
+
+  ringRow: { flexDirection: "row", alignItems: "center", gap: spacing.lg, marginTop: spacing.lg },
+  ringLabelWrap: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "center" },
+  ringLabel: { fontSize: 11, color: colors.brandPrimary, fontWeight: "700" },
+  macroGrid: { flex: 1, flexDirection: "row", flexWrap: "wrap", rowGap: spacing.sm, columnGap: spacing.md },
+  macroLine: { flexDirection: "row", alignItems: "center", gap: 7, width: "45%" },
+  macroDot: { width: 7, height: 7, borderRadius: 4 },
+  macroTxt: { fontSize: 12, color: colors.onSurfaceSecondary },
+  macroTxtBold: { color: colors.onSurface, fontWeight: "700" },
+
+  sectionTitle: {
+    fontSize: 11, color: colors.onSurfaceSecondary, textTransform: "uppercase",
+    letterSpacing: 1, fontWeight: "600", marginTop: spacing.xl, marginBottom: spacing.md,
+  },
+
+  workoutCard: {
+    borderRadius: radius.lg, overflow: "hidden", position: "relative",
+    height: 150, backgroundColor: colors.surfaceSecondary,
+    borderWidth: 1, borderColor: colors.border,
+    justifyContent: "flex-end", padding: spacing.lg,
+  },
+  workoutGlow: {
+    position: "absolute", bottom: -30, right: -20, width: 140, height: 140, borderRadius: 70,
+    backgroundColor: colors.brandPrimary, opacity: 0.1,
+  },
+  workoutTag: {
+    color: colors.brandPrimary, fontSize: 10, letterSpacing: 1.2,
+    textTransform: "uppercase", fontWeight: "700", marginBottom: 6,
+  },
+  workoutTitle: { fontSize: font.xl, color: colors.onSurface, fontWeight: "600", letterSpacing: -0.3 },
+
+  quickRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.lg },
+  quickBtn: {
+    flex: 1, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border,
+    borderRadius: radius.md, padding: spacing.md, alignItems: "center",
+  },
+  quickIcon: {
+    width: 32, height: 32, borderRadius: 9, backgroundColor: colors.brandPrimary,
+    alignItems: "center", justifyContent: "center", marginBottom: spacing.sm,
+  },
+  quickLbl: { fontSize: 11, color: colors.onSurface, fontWeight: "500" },
+  quickBtnWide: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm,
+    backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border,
+    borderRadius: radius.md, padding: spacing.md, marginTop: spacing.sm,
+  },
+  quickWideTxt: { fontSize: font.base, color: colors.brandPrimary, fontWeight: "500" },
+
+  statGrid: { flexDirection: "row", gap: spacing.sm },
+  statCard: {
+    flex: 1, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border,
+    borderRadius: radius.md, padding: spacing.md,
+  },
+  statVal: { fontSize: 22, color: colors.onSurface, fontWeight: "700", letterSpacing: -0.5 },
+  statAccent: { color: colors.brandPrimary },
+  statLbl: { fontSize: 11, color: colors.onSurfaceSecondary, marginTop: 3 },
+
   coachCard: {
     flexDirection: "row", alignItems: "center", gap: spacing.md,
-    backgroundColor: colors.surface, borderRadius: radius.lg, padding: spacing.md,
-    marginTop: spacing.md, borderWidth: 1, borderColor: colors.divider,
+    backgroundColor: colors.surfaceSecondary, borderRadius: radius.lg, padding: spacing.md,
+    marginTop: spacing.xl, borderWidth: 1, borderColor: colors.border,
   },
   coachIconWrap: {
     width: 40, height: 40, borderRadius: 20, backgroundColor: colors.brandPrimary,
@@ -280,31 +328,4 @@ const styles = StyleSheet.create({
   unreadDotTxt: { color: "#FFF", fontSize: 10, fontWeight: "700" },
   coachCardTitle: { fontSize: font.base, color: colors.onSurface, fontWeight: "600" },
   coachCardMsg: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginTop: 2 },
-  workoutCard: {
-    height: 160,
-    borderRadius: radius.lg,
-    overflow: "hidden",
-    marginTop: spacing.lg,
-    backgroundColor: colors.surfaceSecondary,
-  },
-  workoutInner: { flex: 1, padding: spacing.lg, justifyContent: "flex-end" },
-  workoutOverline: { fontSize: font.sm, color: colors.brandTertiary, textTransform: "uppercase", letterSpacing: 1 },
-  workoutTitle: { fontSize: font.xl, color: colors.onSurfaceInverse, marginTop: spacing.xs, fontWeight: "500" },
-  workoutSub: { fontSize: font.base, color: "rgba(255,255,255,0.85)", marginTop: spacing.xs },
-  row: { flexDirection: "row", gap: spacing.md, marginTop: spacing.lg },
-  statCard: { flex: 1, alignItems: "flex-start" },
-  iconWrap: {
-    width: 36, height: 36, borderRadius: radius.md,
-    backgroundColor: colors.brandTertiary, alignItems: "center", justifyContent: "center",
-    marginBottom: spacing.sm,
-  },
-  statValue: { fontSize: font.xxl, color: colors.onSurface, fontWeight: "500" },
-  statLabel: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginTop: 2 },
-  quickActions: { marginTop: spacing.xl, gap: spacing.md },
-  quickBtn: {
-    flexDirection: "row", alignItems: "center", gap: spacing.md,
-    backgroundColor: colors.surface, padding: spacing.lg, borderRadius: radius.md,
-    borderWidth: 1, borderColor: colors.divider,
-  },
-  quickTxt: { fontSize: font.lg, color: colors.onBrandTertiary },
 });
