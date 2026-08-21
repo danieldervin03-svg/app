@@ -434,7 +434,6 @@ export default function NutritionScreen() {
   };
 
   return (
-    <LinearGradient colors={[colors.brandTertiary, colors.surface]} style={{ flex: 1 }}>
     <SafeAreaView style={styles.container} testID="nutrition-screen">
       <View style={styles.header}>
         <Text style={styles.title}>Nutrition</Text>
@@ -447,13 +446,8 @@ export default function NutritionScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brandPrimary} />}
         ListHeaderComponent={
           <View>
-            <LinearGradient
-              colors={[colors.onBrandSecondary, colors.brand, colors.brandSecondary]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.calorieCard}
-            >
-              <Ionicons name="restaurant" size={130} color="rgba(255,255,255,0.10)" style={styles.heroDecor} />
+            <View style={styles.calorieCard}>
+              <View style={styles.heroGlow} pointerEvents="none" />
               <Text style={styles.cardLabel}>{"Calories aujourd'hui"}</Text>
               <View style={styles.rowBetween}>
                 <Text style={styles.calBig} testID="nutrition-consumed">{consumed}</Text>
@@ -468,10 +462,10 @@ export default function NutritionScreen() {
 
               <View style={styles.macroRow}>
                 {[
-                  { key: "protein", label: "Protéines", icon: "flash" as const, color: "#FB7185", consumed: summary?.protein_consumed_g ?? 0, goal: summary?.protein_goal_g ?? 0 },
-                  { key: "carbs", label: "Glucides", icon: "leaf" as const, color: "#FBBF24", consumed: summary?.carbs_consumed_g ?? 0, goal: summary?.carbs_goal_g ?? 0 },
-                  { key: "fat", label: "Lipides", icon: "water" as const, color: "#60A5FA", consumed: summary?.fat_consumed_g ?? 0, goal: summary?.fat_goal_g ?? 0 },
-                  { key: "fiber", label: "Fibres", icon: "nutrition" as const, color: "#34D399", consumed: summary?.fiber_consumed_g ?? 0, goal: summary?.fiber_goal_g ?? 0 },
+                  { key: "protein", label: "Protéines", icon: "flash" as const, color: "#FF6B6B", consumed: summary?.protein_consumed_g ?? 0, goal: summary?.protein_goal_g ?? 0 },
+                  { key: "carbs", label: "Glucides", icon: "leaf" as const, color: colors.brandPrimary, consumed: summary?.carbs_consumed_g ?? 0, goal: summary?.carbs_goal_g ?? 0 },
+                  { key: "fat", label: "Lipides", icon: "water" as const, color: "#5FA8FF", consumed: summary?.fat_consumed_g ?? 0, goal: summary?.fat_goal_g ?? 0 },
+                  { key: "fiber", label: "Fibres", icon: "nutrition" as const, color: "#3DDC9C", consumed: summary?.fiber_consumed_g ?? 0, goal: summary?.fiber_goal_g ?? 0 },
                 ].map((m) => {
                   const pct = m.goal > 0 ? Math.min(1, m.consumed / m.goal) : 0;
                   const over = m.goal > 0 && m.consumed > m.goal;
@@ -481,13 +475,13 @@ export default function NutritionScreen() {
                         <View style={[styles.macroIconDot, { backgroundColor: m.color }]}>
                           <Ionicons name={m.icon} size={11} color="#FFF" />
                         </View>
-                        <Text style={[styles.macroValue, over && { color: "#FEE2E2" }]}>
+                        <Text style={[styles.macroValue, over && { color: "#FF6B6B" }]}>
                           {Math.round(m.consumed)}g
                         </Text>
                       </View>
                       <Text style={styles.macroLabel}>{m.label}</Text>
                       <View style={styles.macroBarTrack}>
-                        <View style={[styles.macroBarFill, { width: `${pct * 100}%`, backgroundColor: over ? "#DC2626" : m.color }]} />
+                        <View style={[styles.macroBarFill, { width: `${pct * 100}%`, backgroundColor: over ? "#FF6B6B" : m.color }]} />
                       </View>
                     </View>
                   );
@@ -498,12 +492,12 @@ export default function NutritionScreen() {
               ) : null}
 
               <View style={styles.perMealRow}>
-                <Ionicons name="restaurant-outline" size={14} color="rgba(255,255,255,0.85)" />
+                <Ionicons name="restaurant-outline" size={14} color={colors.onSurfaceSecondary} />
                 <Text style={styles.perMealTxt}>
                   {user?.meals_per_day ?? 4} repas/jour · {Math.round(goal / (user?.meals_per_day ?? 4))} kcal/repas
                 </Text>
               </View>
-            </LinearGradient>
+            </View>
 
             <View style={styles.actionsRow}>
               <Pressable style={styles.actionBtn} onPress={openNewMeal} testID="nutrition-add-meal">
@@ -938,7 +932,6 @@ export default function NutritionScreen() {
         </View>
       </Modal>
     </SafeAreaView>
-    </LinearGradient>
   );
 }
 
@@ -950,30 +943,34 @@ const styles = StyleSheet.create({
   calorieCard: {
     borderRadius: radius.lg, padding: spacing.lg,
     overflow: "hidden", position: "relative",
+    backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border,
   },
-  heroDecor: { position: "absolute", top: -16, right: -16, transform: [{ rotate: "-18deg" }] },
-  cardLabel: { fontSize: font.sm, color: "rgba(255,255,255,0.85)" },
+  heroGlow: {
+    position: "absolute", top: -60, right: -60, width: 180, height: 180, borderRadius: 90,
+    backgroundColor: colors.brandPrimary, opacity: 0.12,
+  },
+  cardLabel: { fontSize: font.sm, color: colors.onSurfaceSecondary, textTransform: "uppercase", letterSpacing: 0.6 },
   rowBetween: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, marginTop: spacing.xs },
-  calBig: { fontSize: 40, color: colors.onBrandPrimary, fontWeight: "600" },
-  calGoal: { fontSize: font.lg, color: "rgba(255,255,255,0.85)", marginBottom: 8 },
-  progressBar: { height: 8, backgroundColor: "rgba(255,255,255,0.3)", borderRadius: radius.pill, overflow: "hidden", marginTop: spacing.md },
-  progressFill: { height: "100%", backgroundColor: colors.onBrandPrimary },
-  calSub: { fontSize: font.base, color: "rgba(255,255,255,0.85)", marginTop: spacing.sm },
+  calBig: { fontSize: 40, color: colors.onSurface, fontWeight: "700", letterSpacing: -1 },
+  calGoal: { fontSize: font.lg, color: colors.onSurfaceSecondary, marginBottom: 8 },
+  progressBar: { height: 8, backgroundColor: colors.surfaceTertiary, borderRadius: radius.pill, overflow: "hidden", marginTop: spacing.md },
+  progressFill: { height: "100%", backgroundColor: colors.brandPrimary },
+  calSub: { fontSize: font.base, color: colors.onSurfaceSecondary, marginTop: spacing.sm },
   macroRow: { flexDirection: "row", width: "100%", gap: spacing.md, marginTop: spacing.lg },
   macroItem: { flex: 1 },
   macroHeader: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 2 },
   macroIconDot: { width: 18, height: 18, borderRadius: 9, alignItems: "center", justifyContent: "center" },
-  macroValue: { fontSize: font.lg, color: colors.onBrandPrimary, fontWeight: "600" },
-  macroLabel: { fontSize: font.sm, color: "rgba(255,255,255,0.85)", marginBottom: 6 },
-  macroBarTrack: { height: 5, backgroundColor: "rgba(255,255,255,0.3)", borderRadius: radius.pill, overflow: "hidden" },
+  macroValue: { fontSize: font.lg, color: colors.onSurface, fontWeight: "600" },
+  macroLabel: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginBottom: 6 },
+  macroBarTrack: { height: 5, backgroundColor: colors.surfaceTertiary, borderRadius: radius.pill, overflow: "hidden" },
   macroBarFill: { height: "100%", borderRadius: radius.pill },
   perMealRow: {
     flexDirection: "row", alignItems: "center", gap: 6,
     marginTop: spacing.md,
     paddingTop: spacing.sm,
-    borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.25)",
+    borderTopWidth: 1, borderTopColor: colors.divider,
   },
-  perMealTxt: { fontSize: font.sm, color: "rgba(255,255,255,0.85)" },
+  perMealTxt: { fontSize: font.sm, color: colors.onSurfaceSecondary },
   actionsRow: { flexDirection: "row", gap: spacing.md, marginTop: spacing.lg },
   actionBtn: {
     flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm,
@@ -1006,7 +1003,7 @@ const styles = StyleSheet.create({
   mealMacros: { fontSize: font.sm, color: colors.onSurfaceTertiary, marginTop: 2 },
   favBtn: { padding: spacing.sm },
   deleteBtn: { padding: spacing.sm },
-  customBadgeTxt: { fontSize: font.sm, color: "rgba(255,255,255,0.9)", marginTop: spacing.sm, fontWeight: "500" },
+  customBadgeTxt: { fontSize: font.sm, color: colors.brandPrimary, marginTop: spacing.sm, fontWeight: "500" },
   rowBetweenHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: spacing.xl, marginBottom: spacing.md },
   historyLink: { flexDirection: "row", alignItems: "center", gap: 4 },
   historyLinkTxt: { fontSize: font.sm, color: colors.brandPrimary, fontWeight: "500" },
