@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Path, Circle, Line, Text as SvgText } from "react-native-svg";
@@ -86,16 +86,25 @@ function ProgressTip() {
 
 export default function WorkoutsScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ initialView?: "home" | "start" | "mine" | "exercises" }>();
   const [items, setItems] = useState<Workout[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const [view, setView] = useState<"home" | "start" | "mine" | "exercises">("home");
+  const [view, setView] = useState<"home" | "start" | "mine" | "exercises">(params.initialView ?? "home");
   const [mineTab, setMineTab] = useState<"programs" | "history">("programs");
   const [history, setHistory] = useState<HistorySession[]>([]);
   const [myExercises, setMyExercises] = useState<MyExercise[]>([]);
   const [exercisesLoading, setExercisesLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (params.initialView) {
+        setView(params.initialView);
+      }
+    }, [params.initialView])
+  );
 
   const load = useCallback(async () => {
     try {

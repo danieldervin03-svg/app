@@ -65,7 +65,7 @@ export default function GenerateWorkout() {
         discipline,
       });
       if (list.length > 0) {
-        router.replace(`/(tabs)/workouts` as any);
+        router.replace({ pathname: "/(tabs)/workouts", params: { initialView: "mine" } } as any);
       }
     } catch (e: any) {
       setError(e.message || "Génération impossible");
