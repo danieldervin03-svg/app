@@ -614,8 +614,9 @@ export default function NutritionScreen() {
       <Modal visible={addOpen} transparent animationType="slide" onRequestClose={() => { setAddOpen(false); setEditingMealId(null); }}>
         <View style={styles.modalBg}>
           <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ width: "100%" }}>
-            <View style={styles.modalCard}>
+            <View style={[styles.modalCard, { height: SCREEN_H * 0.85 }]}>
               <View style={styles.dragHandle} />
+              <ScrollView keyboardShouldPersistTaps="handled" style={{ flex: 1 }}>
               <Text style={styles.modalTitle}>{editingMealId ? "Modifier le repas" : "Nouveau repas"}</Text>
               <Text style={styles.modalSub}>
                 {`Il vous reste ${remaining} kcal à répartir sur ${mealsRemaining} repas restant${mealsRemaining > 1 ? "s" : ""} · ~${perRemainingMeal} kcal/repas`}
@@ -717,6 +718,7 @@ export default function NutritionScreen() {
               </View>
               {error ? <Text style={styles.err}>{error}</Text> : null}
               <Button title="Enregistrer" onPress={submitMeal} loading={saving} testID="meal-save-button" style={{ marginTop: spacing.md }} />
+              </ScrollView>
               <Pressable onPress={() => { setAddOpen(false); setBreakdown(null); setEditingMealId(null); }} style={{ alignItems: "center", padding: spacing.md }}>
                 <Text style={{ color: colors.onSurfaceSecondary }}>Annuler</Text>
               </Pressable>
