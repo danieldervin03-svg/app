@@ -504,6 +504,13 @@ export default function WorkoutDetail() {
                   ) : null}
                   {ex.notes ? <Text style={styles.exNote}>{ex.notes}</Text> : null}
                 </View>
+                <Pressable
+                  onPress={() => startRestTimer(ex.rest_seconds, ex.name)}
+                  style={styles.miniBtn}
+                  testID={`exercise-rest-${ex.id}`}
+                >
+                  <Ionicons name="timer-outline" size={20} color={colors.brandPrimary} />
+                </Pressable>
                 <Pressable onPress={() => openGif(ex.name)} style={styles.miniBtn} testID={`exercise-gif-${ex.id}`}>
                   <Ionicons name="play-circle-outline" size={20} color={colors.brandPrimary} />
                 </Pressable>
