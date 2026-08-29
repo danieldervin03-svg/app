@@ -1,9 +1,10 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Pressable, Modal, KeyboardAvoidingView, Platform, ActivityIndicator, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
+import * as Haptics from "expo-haptics";
 import Svg, { Path, Circle } from "react-native-svg";
 import { colors, font, radius, spacing } from "@/src/theme";
 import { Button, Input } from "@/src/components/ui";
@@ -56,6 +57,48 @@ export default function WorkoutDetail() {
   const [logSaving, setLogSaving] = useState(false);
   const [logEntries, setLogEntries] = useState<Record<string, LogEntry>>({});
   const [historyOpen, setHistoryOpen] = useState(false);
+
+  // Rest timer — counts down after validating an exercise, using its rest_seconds.
+  const [restSecondsLeft, setRestSecondsLeft] = useState<number | null>(null);
+  const [restTotal, setRestTotal] = useState(0);
+  const [restExerciseName, setRestExerciseName] = useState<string | null>(null);
+  const restIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startRestTimer = (seconds: number, exerciseName: string) => {
+    if (restIntervalRef.current) clearInterval(restIntervalRef.current);
+    setRestTotal(seconds);
+    setRestSecondsLeft(seconds);
+    setRestExerciseName(exerciseName);
+    restIntervalRef.current = setInterval(() => {
+      setRestSecondsLeft((prev) => {
+        if (prev == null) return null;
+        if (prev <= 1) {
+          if (restIntervalRef.current) clearInterval(restIntervalRef.current);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const dismissRestTimer = () => {
+    if (restIntervalRef.current) clearInterval(restIntervalRef.current);
+    setRestSecondsLeft(null);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (restIntervalRef.current) clearInterval(restIntervalRef.current);
+    };
+  }, []);
+
+  const formatElapsed = (totalSeconds: number) => {
+    const m = Math.floor(totalSeconds / 60);
+    const s = totalSeconds % 60;
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${pad(m)}:${pad(s)}`;
+  };
   const [historyExName, setHistoryExName] = useState<string>("");
   const [historyPoints, setHistoryPoints] = useState<ExerciseHistoryPoint[]>([]);
 
@@ -191,11 +234,12 @@ export default function WorkoutDetail() {
 
   const cancelValidate = () => setValidatingExId(null);
 
-  const bumpWeight = (delta: number) => setDraftWeight((prev) => Math.max(0, (prev ?? 0) + delta));
+  const bumpWeight = (delta: number) => setDraftWeight((prev) => Math.round((Math.max(0, (prev ?? 0) + delta)) * 10) / 10);
   const bumpReps = (delta: number) => setDraftReps((prev) => Math.max(0, (prev ?? 0) + delta));
 
   const confirmValidate = async () => {
     if (!workout || !validatingExId) return;
+    const validatedEx = workout.exercises.find((e) => e.id === validatingExId);
     setValidateSaving(true);
     try {
       const res = await api.logExercise(workout.id, validatingExId, {
@@ -205,6 +249,9 @@ export default function WorkoutDetail() {
       });
       setWorkout(res.workout);
       setValidatingExId(null);
+      if (validatedEx && validatedEx.rest_seconds > 0) {
+        startRestTimer(validatedEx.rest_seconds, validatedEx.name);
+      }
     } catch {} finally {
       setValidateSaving(false);
     }
@@ -497,12 +544,12 @@ export default function WorkoutDetail() {
                   <View style={styles.adjustRow}>
                     <Text style={styles.adjustLabel}>Poids : {draftWeight != null ? `${draftWeight} kg` : "—"}</Text>
                     <View style={styles.chipRow}>
-                      {[5, 2, 1].map((n) => (
+                      {[5, 2, 1, 0.5].map((n) => (
                         <Pressable key={`-${n}`} onPress={() => bumpWeight(-n)} style={styles.chipMinus} testID={`validate-weight-minus${n}-${ex.id}`}>
                           <Text style={styles.chipMinusTxt}>-{n} kg</Text>
                         </Pressable>
                       ))}
-                      {[1, 2, 5].map((n) => (
+                      {[0.5, 1, 2, 5].map((n) => (
                         <Pressable key={`+${n}`} onPress={() => bumpWeight(n)} style={styles.chip} testID={`validate-weight-plus${n}-${ex.id}`}>
                           <Text style={styles.chipTxt}>+{n} kg</Text>
                         </Pressable>
@@ -817,6 +864,37 @@ export default function WorkoutDetail() {
           </View>
         </View>
       </Modal>
+
+      {restSecondsLeft != null ? (
+        <View style={styles.timerBar} testID="workout-rest-timer">
+          <View style={styles.timerProgressTrack}>
+            <View
+              style={[
+                styles.timerProgressFill,
+                { width: `${restTotal > 0 ? ((restTotal - restSecondsLeft) / restTotal) * 100 : 0}%` },
+              ]}
+            />
+          </View>
+          <View style={styles.timerRow}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
+              <Ionicons
+                name={restSecondsLeft === 0 ? "checkmark-circle" : "time-outline"}
+                size={18}
+                color={colors.brandPrimary}
+              />
+              <View>
+                <Text style={styles.timerTxt}>
+                  {restSecondsLeft === 0 ? "Repos terminé !" : `Repos · ${formatElapsed(restSecondsLeft)}`}
+                </Text>
+                {restExerciseName ? <Text style={styles.timerSub} numberOfLines={1}>{restExerciseName}</Text> : null}
+              </View>
+            </View>
+            <Pressable onPress={dismissRestTimer} style={styles.timerCloseBtn} testID="workout-rest-timer-dismiss">
+              <Ionicons name="close" size={18} color={colors.onSurfaceSecondary} />
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -835,6 +913,21 @@ const styles = StyleSheet.create({
   celebrateStatTxt: { fontSize: font.lg, fontWeight: "700" },
   celebrateMsg: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginTop: spacing.lg, textAlign: "center" },
   container: { flex: 1, backgroundColor: colors.surface },
+  timerBar: {
+    position: "absolute", bottom: 0, left: 0, right: 0,
+    backgroundColor: colors.surfaceSecondary,
+    borderTopWidth: 1, borderTopColor: colors.border,
+    paddingBottom: spacing.sm,
+  },
+  timerProgressTrack: { height: 3, backgroundColor: colors.surfaceTertiary, overflow: "hidden" },
+  timerProgressFill: { height: "100%", backgroundColor: colors.brandPrimary },
+  timerRow: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: spacing.lg, paddingTop: spacing.sm,
+  },
+  timerTxt: { fontSize: font.base, color: colors.onSurface, fontWeight: "600", fontVariant: ["tabular-nums"] },
+  timerSub: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginTop: 1 },
+  timerCloseBtn: { padding: spacing.xs },
   header: {
     flexDirection: "row", alignItems: "center", gap: spacing.sm,
     padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.divider,

@@ -1,7 +1,9 @@
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
+import { storage } from "@/src/utils/storage";
 
 const REMINDER_ID = "daily-reminder-bodypilot";
+const REMINDER_PREF_KEY = "daily-reminder-enabled";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -26,7 +28,10 @@ export async function ensureDailyReminderScheduled() {
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
     }
-    if (finalStatus !== "granted") return false;
+    if (finalStatus !== "granted") {
+      await storage.setItem(REMINDER_PREF_KEY, false);
+      return false;
+    }
 
     if (Platform.OS === "android") {
       await Notifications.setNotificationChannelAsync("default", {
@@ -35,9 +40,9 @@ export async function ensureDailyReminderScheduled() {
       });
     }
 
-    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-    const already = scheduled.some((n) => n.identifier === REMINDER_ID);
-    if (already) return true;
+    // Clear any previously scheduled reminder first, to avoid ever ending up
+    // with duplicates if this gets called more than once.
+    await Notifications.cancelScheduledNotificationAsync(REMINDER_ID).catch(() => {});
 
     await Notifications.scheduleNotificationAsync({
       identifier: REMINDER_ID,
@@ -51,6 +56,10 @@ export async function ensureDailyReminderScheduled() {
         minute: 0,
       },
     });
+    // The saved preference is the source of truth from now on — querying the
+    // OS's scheduled-notifications list directly can lag or behave
+    // inconsistently across devices right after scheduling/cancelling.
+    await storage.setItem(REMINDER_PREF_KEY, true);
     return true;
   } catch {
     // Notifications are a nice-to-have — never let a failure here affect the app.
@@ -59,16 +68,28 @@ export async function ensureDailyReminderScheduled() {
 }
 
 export async function cancelDailyReminder() {
+  // Always record the preference first: even if the OS-level cancellation
+  // below fails or is slow, the toggle must reflect "off" immediately and
+  // reliably the next time the app checks.
+  await storage.setItem(REMINDER_PREF_KEY, false);
   try {
     await Notifications.cancelScheduledNotificationAsync(REMINDER_ID);
+    // Defensive: also sweep any other scheduled notification that happens to
+    // carry the same identifier/title, in case duplicates were ever created.
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    await Promise.all(
+      scheduled
+        .filter((n) => n.identifier === REMINDER_ID)
+        .map((n) => Notifications.cancelScheduledNotificationAsync(n.identifier).catch(() => {}))
+    );
   } catch {}
 }
 
 export async function isDailyReminderEnabled(): Promise<boolean> {
-  try {
-    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-    return scheduled.some((n) => n.identifier === REMINDER_ID);
-  } catch {
-    return false;
-  }
+  // Trust our own persisted preference as the source of truth, since it's
+  // set explicitly and immediately on every toggle — more reliable than
+  // re-querying the OS's scheduled-notifications list, which can be a beat
+  // behind right after a schedule/cancel call on some devices.
+  const pref = await storage.getItem<boolean>(REMINDER_PREF_KEY, false);
+  return !!pref;
 }
