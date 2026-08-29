@@ -104,27 +104,35 @@ function ExerciseCard({ ex }: { ex: MyExercise }) {
               />
               {series.chartPoints.map((p, i) => {
                 const isSelected = i === selectedIdx;
-                const reps = rawPoints[i].reps;
                 return (
-                  <React.Fragment key={i}>
-                    {reps != null ? (
-                      <SvgText
-                        x={p.x + LEFT_AXIS_W} y={p.y + TOP_PAD - 8}
-                        fontSize={9} fill={isSelected ? "#0891B2" : colors.onSurfaceSecondary}
-                        fontWeight={isSelected ? "700" : "400"}
-                        textAnchor="middle"
-                      >
-                        {reps} reps
-                      </SvgText>
-                    ) : null}
-                    <Circle
-                      cx={p.x + LEFT_AXIS_W} cy={p.y + TOP_PAD} r={isSelected ? 5 : 3}
-                      fill="#0891B2"
-                    />
-                  </React.Fragment>
+                  <Circle
+                    key={i}
+                    cx={p.x + LEFT_AXIS_W} cy={p.y + TOP_PAD} r={isSelected ? 5 : 3}
+                    fill="#0891B2"
+                  />
                 );
               })}
             </Svg>
+            {/* Reps labels as real RN Text overlaid on top — SvgText has shown
+                glyph-rendering glitches (characters overlapping) on some
+                devices, RN's own text layout is far more reliable. */}
+            {series.chartPoints.map((p, i) => {
+              const reps = rawPoints[i].reps;
+              if (reps == null) return null;
+              const isSelected = i === selectedIdx;
+              return (
+                <Text
+                  key={i}
+                  style={[
+                    styles.pointRepsLabel,
+                    { left: `${((p.x + LEFT_AXIS_W) / CHART_W) * 100}%`, top: p.y + TOP_PAD - 18 },
+                    isSelected && styles.pointRepsLabelActive,
+                  ]}
+                >
+                  {reps} reps
+                </Text>
+              );
+            })}
             {/* Real touch targets overlaid on top — more reliable than native SVG
                 touch handling, especially inside a scrollable list. Horizontal
                 position is expressed as a % of the chart's rendered width since
@@ -618,6 +626,11 @@ const styles = StyleSheet.create({
   exerciseCardStat: { fontSize: font.sm, color: colors.onSurface },
   exerciseCardNoData: { fontSize: font.sm, color: colors.onSurfaceTertiary, marginTop: spacing.sm, fontStyle: "italic" },
   chartHint: { fontSize: 11, color: colors.onSurfaceTertiary, marginTop: spacing.sm, fontStyle: "italic" },
+  pointRepsLabel: {
+    position: "absolute", fontSize: 9, color: colors.onSurfaceSecondary,
+    transform: [{ translateX: -18 }], width: 36, textAlign: "center",
+  },
+  pointRepsLabelActive: { color: "#0891B2", fontWeight: "700" },
   pointDetail: {
     marginTop: spacing.xs, backgroundColor: colors.surfaceTertiary, borderRadius: radius.sm,
     padding: spacing.sm, alignItems: "center",
