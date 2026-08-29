@@ -33,24 +33,135 @@ function smoothPath(points: ChartPoint[]): string {
   return d;
 }
 
-function buildXY(
-  points: { reps: number; weight: number }[],
+function buildTimeSeries(
+  values: number[],
   drawW: number,
   drawH: number,
-): { chartPoints: ChartPoint[]; xMin: number; xMax: number; yMin: number; yMax: number } {
-  const xs = points.map((p) => p.reps);
-  const ys = points.map((p) => p.weight);
-  const xMin = Math.min(...xs);
-  const xMax = Math.max(...xs);
-  const yMin = Math.min(...ys);
-  const yMax = Math.max(...ys);
-  const xRange = Math.max(1, xMax - xMin);
+): { chartPoints: ChartPoint[]; yMin: number; yMax: number } {
+  const yMin = Math.min(...values);
+  const yMax = Math.max(...values);
   const yRange = Math.max(0.5, yMax - yMin);
-  const chartPoints = points.map((p) => ({
-    x: ((p.reps - xMin) / xRange) * drawW,
-    y: drawH - ((p.weight - yMin) / yRange) * drawH,
+  const stepX = values.length > 1 ? drawW / (values.length - 1) : 0;
+  const chartPoints = values.map((v, i) => ({
+    x: values.length > 1 ? i * stepX : drawW / 2,
+    y: drawH - ((v - yMin) / yRange) * drawH,
   }));
-  return { chartPoints, xMin, xMax, yMin, yMax };
+  return { chartPoints, yMin, yMax };
+}
+
+function ExerciseCard({ ex }: { ex: MyExercise }) {
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+
+  const rawPoints = ex.points
+    .filter((p) => p.weight_kg != null)
+    .map((p) => ({ weight: p.weight_kg as number, reps: p.reps_done, date: p.performed_at }));
+
+  const LEFT_AXIS_W = 32;
+  const BOTTOM_AXIS_H = 16;
+  const TOP_PAD = 16; // room for the reps label above each point
+  const CHART_W = 260;
+  const CHART_H = 100;
+  const drawW = CHART_W - LEFT_AXIS_W;
+  const drawH = CHART_H - BOTTOM_AXIS_H - TOP_PAD;
+
+  let series: ReturnType<typeof buildTimeSeries> | null = null;
+  if (rawPoints.length >= 2) {
+    series = buildTimeSeries(rawPoints.map((p) => p.weight), drawW, drawH);
+  }
+
+  const selected = selectedIdx != null ? rawPoints[selectedIdx] : null;
+
+  return (
+    <View style={styles.exerciseCard} testID={`my-exercise-${ex.name}`}>
+      <Text style={styles.exerciseCardName}>{ex.name}</Text>
+      <Text style={styles.exerciseCardCount}>{ex.sessions_count} séance{ex.sessions_count > 1 ? "s" : ""}</Text>
+      <View style={styles.exerciseCardStatsRow}>
+        {ex.latest_weight_kg != null ? (
+          <Text style={styles.exerciseCardStat}>💪 {ex.latest_weight_kg} kg</Text>
+        ) : null}
+        {ex.latest_reps_done != null ? (
+          <Text style={styles.exerciseCardStat}>🔁 {ex.latest_reps_done} reps</Text>
+        ) : null}
+      </View>
+
+      {series ? (
+        <>
+          <Text style={styles.chartHint}>Poids dans le temps · touchez un point pour le détail</Text>
+          <View style={{ marginTop: spacing.xs }}>
+            <Svg width="100%" height={CHART_H} viewBox={`0 0 ${CHART_W} ${CHART_H}`}>
+              <Line x1={LEFT_AXIS_W} y1={TOP_PAD} x2={LEFT_AXIS_W} y2={TOP_PAD + drawH} stroke={colors.divider} strokeWidth={1} />
+              <Line x1={LEFT_AXIS_W} y1={TOP_PAD + drawH} x2={CHART_W} y2={TOP_PAD + drawH} stroke={colors.divider} strokeWidth={1} />
+              <SvgText x={LEFT_AXIS_W - 4} y={TOP_PAD + 4} fontSize={9} fill={colors.onSurfaceSecondary} textAnchor="end">
+                {Math.round(series.yMax)}
+              </SvgText>
+              <SvgText x={LEFT_AXIS_W - 4} y={TOP_PAD + drawH} fontSize={9} fill={colors.onSurfaceSecondary} textAnchor="end">
+                {Math.round(series.yMin)}kg
+              </SvgText>
+
+              <Path
+                d={smoothPath(series.chartPoints.map((p) => ({ x: p.x + LEFT_AXIS_W, y: p.y + TOP_PAD })))}
+                stroke="#0891B2" strokeWidth={2.5} fill="none"
+              />
+              {series.chartPoints.map((p, i) => {
+                const isSelected = i === selectedIdx;
+                const reps = rawPoints[i].reps;
+                return (
+                  <React.Fragment key={i}>
+                    {reps != null ? (
+                      <SvgText
+                        x={p.x + LEFT_AXIS_W} y={p.y + TOP_PAD - 8}
+                        fontSize={9} fill={isSelected ? "#0891B2" : colors.onSurfaceSecondary}
+                        fontWeight={isSelected ? "700" : "400"}
+                        textAnchor="middle"
+                      >
+                        {reps} reps
+                      </SvgText>
+                    ) : null}
+                    <Circle
+                      cx={p.x + LEFT_AXIS_W} cy={p.y + TOP_PAD} r={isSelected ? 5 : 3}
+                      fill="#0891B2"
+                    />
+                  </React.Fragment>
+                );
+              })}
+            </Svg>
+            {/* Real touch targets overlaid on top — more reliable than native SVG
+                touch handling, especially inside a scrollable list. Horizontal
+                position is expressed as a % of the chart's rendered width since
+                the SVG scales fluidly; vertical position is a fixed pixel since
+                the SVG's height is set literally in pixels. */}
+            {series.chartPoints.map((p, i) => (
+              <Pressable
+                key={i}
+                onPress={() => setSelectedIdx(selectedIdx === i ? null : i)}
+                hitSlop={10}
+                style={{
+                  position: "absolute",
+                  left: `${((p.x + LEFT_AXIS_W) / CHART_W) * 100}%`,
+                  top: p.y + TOP_PAD,
+                  width: 26, height: 26, marginLeft: -13, marginTop: -13,
+                }}
+                testID={`exercise-point-${ex.name}-${i}`}
+              />
+            ))}
+          </View>
+
+          {selected ? (
+            <View style={styles.pointDetail}>
+              <Text style={styles.pointDetailTxt}>
+                {new Date(selected.date).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
+              </Text>
+              <Text style={styles.pointDetailStrong}>
+                {selected.weight} kg{selected.reps != null ? ` — ${selected.reps} reps` : ""}
+              </Text>
+            </View>
+          ) : null}
+        </>
+      ) : (
+        <Text style={styles.exerciseCardNoData}>Pas encore assez de données pour une courbe</Text>
+      )}
+    </View>
+  );
 }
 
 type HistorySession = {
@@ -216,71 +327,7 @@ export default function WorkoutsScreen() {
     );
   };
 
-  const renderExerciseCard = (ex: MyExercise) => {
-    const rawPoints = ex.points
-      .filter((p) => p.weight_kg != null && p.reps_done != null)
-      .map((p) => ({ reps: p.reps_done as number, weight: p.weight_kg as number }))
-      .sort((a, b) => a.reps - b.reps);
-
-    const CARD_PAD = spacing.lg;
-    const LEFT_AXIS_W = 34;
-    const BOTTOM_AXIS_H = 18;
-    const CHART_W = 260;
-    const CHART_H = 90;
-    const drawW = CHART_W - LEFT_AXIS_W;
-    const drawH = CHART_H - BOTTOM_AXIS_H;
-
-    let chartInfo: ReturnType<typeof buildXY> | null = null;
-    if (rawPoints.length >= 2) {
-      chartInfo = buildXY(rawPoints, drawW, drawH);
-    }
-
-    return (
-      <View style={styles.exerciseCard} testID={`my-exercise-${ex.name}`}>
-        <Text style={styles.exerciseCardName}>{ex.name}</Text>
-        <Text style={styles.exerciseCardCount}>{ex.sessions_count} séance{ex.sessions_count > 1 ? "s" : ""}</Text>
-        <View style={styles.exerciseCardStatsRow}>
-          {ex.latest_weight_kg != null ? (
-            <Text style={styles.exerciseCardStat}>💪 {ex.latest_weight_kg} kg</Text>
-          ) : null}
-          {ex.latest_reps_done != null ? (
-            <Text style={styles.exerciseCardStat}>🔁 {ex.latest_reps_done} reps</Text>
-          ) : null}
-        </View>
-        {chartInfo ? (
-          <Svg width="100%" height={CHART_H} viewBox={`0 0 ${CHART_W} ${CHART_H}`} style={{ marginTop: spacing.sm }}>
-            {/* Axes */}
-            <Line x1={LEFT_AXIS_W} y1={0} x2={LEFT_AXIS_W} y2={drawH} stroke={colors.divider} strokeWidth={1} />
-            <Line x1={LEFT_AXIS_W} y1={drawH} x2={CHART_W} y2={drawH} stroke={colors.divider} strokeWidth={1} />
-            {/* Y axis labels (weight) */}
-            <SvgText x={LEFT_AXIS_W - 4} y={8} fontSize={9} fill={colors.onSurfaceSecondary} textAnchor="end">
-              {Math.round(chartInfo.yMax)}
-            </SvgText>
-            <SvgText x={LEFT_AXIS_W - 4} y={drawH} fontSize={9} fill={colors.onSurfaceSecondary} textAnchor="end">
-              {Math.round(chartInfo.yMin)}kg
-            </SvgText>
-            {/* X axis labels (reps) */}
-            <SvgText x={LEFT_AXIS_W} y={CHART_H - 2} fontSize={9} fill={colors.onSurfaceSecondary} textAnchor="start">
-              {chartInfo.xMin}
-            </SvgText>
-            <SvgText x={CHART_W} y={CHART_H - 2} fontSize={9} fill={colors.onSurfaceSecondary} textAnchor="end">
-              {chartInfo.xMax} reps
-            </SvgText>
-            {/* Curve, offset by the left axis width */}
-            <Path
-              d={smoothPath(chartInfo.chartPoints.map((p) => ({ x: p.x + LEFT_AXIS_W, y: p.y })))}
-              stroke="#0891B2" strokeWidth={2.5} fill="none"
-            />
-            {chartInfo.chartPoints.map((p, i) => (
-              <Circle key={i} cx={p.x + LEFT_AXIS_W} cy={p.y} r={3} fill="#0891B2" />
-            ))}
-          </Svg>
-        ) : (
-          <Text style={styles.exerciseCardNoData}>Pas encore assez de données pour une courbe</Text>
-        )}
-      </View>
-    );
-  };
+  const renderExerciseCard = (ex: MyExercise) => <ExerciseCard key={ex.name} ex={ex} />;
 
   return (
     <LinearGradient colors={[colors.brandTertiary, colors.surface]} style={{ flex: 1 }}>
@@ -570,4 +617,11 @@ const styles = StyleSheet.create({
   exerciseCardStatsRow: { flexDirection: "row", gap: spacing.md, marginTop: 4 },
   exerciseCardStat: { fontSize: font.sm, color: colors.onSurface },
   exerciseCardNoData: { fontSize: font.sm, color: colors.onSurfaceTertiary, marginTop: spacing.sm, fontStyle: "italic" },
+  chartHint: { fontSize: 11, color: colors.onSurfaceTertiary, marginTop: spacing.sm, fontStyle: "italic" },
+  pointDetail: {
+    marginTop: spacing.xs, backgroundColor: colors.surfaceTertiary, borderRadius: radius.sm,
+    padding: spacing.sm, alignItems: "center",
+  },
+  pointDetailTxt: { fontSize: 11, color: colors.onSurfaceSecondary, textTransform: "capitalize" },
+  pointDetailStrong: { fontSize: font.base, color: colors.onSurface, fontWeight: "700", marginTop: 2 },
 });
