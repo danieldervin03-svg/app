@@ -10,6 +10,7 @@ import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { AuthProvider, useAuth } from "@/src/auth";
 import { colors, font, spacing } from "@/src/theme";
 import { AnimatedSplash } from "@/src/components/animated-splash";
+import { UpdateChecker } from "@/src/components/update-banner";
 import { ensureDailyReminderScheduled } from "@/src/notifications";
 
 LogBox.ignoreAllLogs(true);
@@ -82,6 +83,7 @@ export default function RootLayout() {
         <AuthProvider>
           <RootGuard />
         </AuthProvider>
+        <UpdateChecker />
         {showSplash ? <AnimatedSplash onFinished={() => setShowSplash(false)} /> : null}
       </SafeAreaProvider>
     </GestureHandlerRootView>

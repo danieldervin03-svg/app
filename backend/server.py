@@ -572,6 +572,26 @@ async def reset_password(body: ResetPasswordInput):
     return {"ok": True, "message": "Mot de passe mis à jour."}
 
 
+@api.get("/app/version")
+async def app_version_info():
+    """Public endpoint (no auth) checked on app launch to see if a newer version
+    is available. Update the 'app_meta' document in MongoDB manually each time
+    a new version is published to the stores."""
+    doc = await db.app_meta.find_one({"_key": "version_info"}, {"_id": 0})
+    if not doc:
+        # Sensible default until a real document is created in MongoDB.
+        return {
+            "latest_version_android": "1.0.0",
+            "latest_version_ios": "1.0.0",
+            "force_update": False,
+            "message": "",
+            "android_url": "https://play.google.com/store/apps/details?id=bodypilot.app",
+            "ios_url": "https://apps.apple.com/app/bodypilot",
+        }
+    doc.pop("_key", None)
+    return doc
+
+
 @api.get("/auth/me", response_model=UserPublic)
 async def me(user: dict = Depends(get_current_user)):
     coach_name = None

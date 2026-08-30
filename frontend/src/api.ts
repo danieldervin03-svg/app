@@ -282,6 +282,15 @@ export type StudentMessage = {
 
 // ============ Auth ============
 export const api = {
+  checkAppVersion: () =>
+    request<{
+      latest_version_android: string;
+      latest_version_ios: string;
+      force_update: boolean;
+      message: string;
+      android_url: string;
+      ios_url: string;
+    }>("/app/version", { auth: false }),
   register: (body: { email: string; password: string; name: string; role?: "user" | "coach" }) =>
     request<{ token: string; user: User }>("/auth/register", { method: "POST", body, auth: false }),
   login: (body: { email: string; password: string }) =>
