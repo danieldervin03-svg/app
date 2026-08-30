@@ -56,7 +56,7 @@ export default function LoginScreen() {
         style={{ flex: 1 }}
       >
         <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
-          <Text style={styles.title}>Bon retour</Text>
+          <Text style={styles.title}>Bienvenue</Text>
           <Text style={styles.subtitle}>Connectez-vous pour continuer</Text>
 
           <Input

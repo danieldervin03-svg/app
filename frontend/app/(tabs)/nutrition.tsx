@@ -10,7 +10,7 @@ import { Button, Input, EmptyState } from "@/src/components/ui";
 import { api, Meal, MealSuggestion, MenuScanResult, TodaySummary } from "@/src/api";
 import { useAuth } from "@/src/auth";
 
-const MEAL_TYPES: Meal["meal_type"][] = ["petit-déjeuner", "déjeuner", "dîner", "collation"];
+const MEAL_TYPES: Meal["meal_type"][] = ["petit-déjeuner", "entrée", "déjeuner", "dessert", "dîner", "collation"];
 
 const SCREEN_H = Dimensions.get("window").height;
 

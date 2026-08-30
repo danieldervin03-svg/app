@@ -168,7 +168,7 @@ export type Meal = {
   fat_g?: number | null;
   fiber_g?: number | null;
   is_favorite?: boolean;
-  meal_type: "petit-déjeuner" | "déjeuner" | "dîner" | "collation";
+  meal_type: "petit-déjeuner" | "entrée" | "déjeuner" | "dîner" | "dessert" | "collation";
   date: string;
   created_at: string;
   quantity_g?: number | null;

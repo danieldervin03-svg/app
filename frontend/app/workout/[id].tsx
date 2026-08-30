@@ -4,7 +4,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import * as Haptics from "expo-haptics";
 import Svg, { Path, Circle } from "react-native-svg";
 import { colors, font, radius, spacing } from "@/src/theme";
 import { Button, Input } from "@/src/components/ui";
@@ -58,38 +57,33 @@ export default function WorkoutDetail() {
   const [logEntries, setLogEntries] = useState<Record<string, LogEntry>>({});
   const [historyOpen, setHistoryOpen] = useState(false);
 
-  // Rest timer — counts down after validating an exercise, using its rest_seconds.
-  const [restSecondsLeft, setRestSecondsLeft] = useState<number | null>(null);
-  const [restTotal, setRestTotal] = useState(0);
-  const [restExerciseName, setRestExerciseName] = useState<string | null>(null);
-  const restIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Simple manual stopwatch, always visible at the bottom of the page —
+  // no automatic trigger, the user starts/pauses/resets it themselves.
+  const [chronoSeconds, setChronoSeconds] = useState(0);
+  const [chronoRunning, setChronoRunning] = useState(false);
+  const chronoIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const startRestTimer = (seconds: number, exerciseName: string) => {
-    if (restIntervalRef.current) clearInterval(restIntervalRef.current);
-    setRestTotal(seconds);
-    setRestSecondsLeft(seconds);
-    setRestExerciseName(exerciseName);
-    restIntervalRef.current = setInterval(() => {
-      setRestSecondsLeft((prev) => {
-        if (prev == null) return null;
-        if (prev <= 1) {
-          if (restIntervalRef.current) clearInterval(restIntervalRef.current);
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+  const toggleChrono = () => {
+    if (chronoRunning) {
+      if (chronoIntervalRef.current) clearInterval(chronoIntervalRef.current);
+      setChronoRunning(false);
+    } else {
+      setChronoRunning(true);
+      chronoIntervalRef.current = setInterval(() => {
+        setChronoSeconds((prev) => prev + 1);
+      }, 1000);
+    }
   };
 
-  const dismissRestTimer = () => {
-    if (restIntervalRef.current) clearInterval(restIntervalRef.current);
-    setRestSecondsLeft(null);
+  const resetChrono = () => {
+    if (chronoIntervalRef.current) clearInterval(chronoIntervalRef.current);
+    setChronoRunning(false);
+    setChronoSeconds(0);
   };
 
   useEffect(() => {
     return () => {
-      if (restIntervalRef.current) clearInterval(restIntervalRef.current);
+      if (chronoIntervalRef.current) clearInterval(chronoIntervalRef.current);
     };
   }, []);
 
@@ -239,7 +233,6 @@ export default function WorkoutDetail() {
 
   const confirmValidate = async () => {
     if (!workout || !validatingExId) return;
-    const validatedEx = workout.exercises.find((e) => e.id === validatingExId);
     setValidateSaving(true);
     try {
       const res = await api.logExercise(workout.id, validatingExId, {
@@ -249,9 +242,6 @@ export default function WorkoutDetail() {
       });
       setWorkout(res.workout);
       setValidatingExId(null);
-      if (validatedEx && validatedEx.rest_seconds > 0) {
-        startRestTimer(validatedEx.rest_seconds, validatedEx.name);
-      }
     } catch {} finally {
       setValidateSaving(false);
     }
@@ -504,13 +494,6 @@ export default function WorkoutDetail() {
                   ) : null}
                   {ex.notes ? <Text style={styles.exNote}>{ex.notes}</Text> : null}
                 </View>
-                <Pressable
-                  onPress={() => startRestTimer(ex.rest_seconds, ex.name)}
-                  style={styles.miniBtn}
-                  testID={`exercise-rest-${ex.id}`}
-                >
-                  <Ionicons name="timer-outline" size={20} color={colors.brandPrimary} />
-                </Pressable>
                 <Pressable onPress={() => openGif(ex.name)} style={styles.miniBtn} testID={`exercise-gif-${ex.id}`}>
                   <Ionicons name="play-circle-outline" size={20} color={colors.brandPrimary} />
                 </Pressable>
@@ -872,36 +855,17 @@ export default function WorkoutDetail() {
         </View>
       </Modal>
 
-      {restSecondsLeft != null ? (
-        <View style={styles.timerBar} testID="workout-rest-timer">
-          <View style={styles.timerProgressTrack}>
-            <View
-              style={[
-                styles.timerProgressFill,
-                { width: `${restTotal > 0 ? ((restTotal - restSecondsLeft) / restTotal) * 100 : 0}%` },
-              ]}
-            />
-          </View>
-          <View style={styles.timerRow}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
-              <Ionicons
-                name={restSecondsLeft === 0 ? "checkmark-circle" : "time-outline"}
-                size={18}
-                color={colors.brandPrimary}
-              />
-              <View>
-                <Text style={styles.timerTxt}>
-                  {restSecondsLeft === 0 ? "Repos terminé !" : `Repos · ${formatElapsed(restSecondsLeft)}`}
-                </Text>
-                {restExerciseName ? <Text style={styles.timerSub} numberOfLines={1}>{restExerciseName}</Text> : null}
-              </View>
-            </View>
-            <Pressable onPress={dismissRestTimer} style={styles.timerCloseBtn} testID="workout-rest-timer-dismiss">
-              <Ionicons name="close" size={18} color={colors.onSurfaceSecondary} />
-            </Pressable>
-          </View>
+      <View style={styles.timerBar} testID="workout-chrono">
+        <Text style={styles.timerTxt}>{formatElapsed(chronoSeconds)}</Text>
+        <View style={styles.chronoBtns}>
+          <Pressable onPress={resetChrono} style={styles.chronoResetBtn} testID="workout-chrono-reset">
+            <Ionicons name="refresh" size={18} color={colors.onSurfaceSecondary} />
+          </Pressable>
+          <Pressable onPress={toggleChrono} style={styles.chronoPlayBtn} testID="workout-chrono-toggle">
+            <Ionicons name={chronoRunning ? "pause" : "play"} size={18} color={colors.onBrandPrimary} />
+          </Pressable>
         </View>
-      ) : null}
+      </View>
     </SafeAreaView>
   );
 }
@@ -922,19 +886,21 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.surface },
   timerBar: {
     position: "absolute", bottom: 0, left: 0, right: 0,
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.sm,
     backgroundColor: colors.surfaceSecondary,
     borderTopWidth: 1, borderTopColor: colors.border,
-    paddingBottom: spacing.sm,
   },
-  timerProgressTrack: { height: 3, backgroundColor: colors.surfaceTertiary, overflow: "hidden" },
-  timerProgressFill: { height: "100%", backgroundColor: colors.brandPrimary },
-  timerRow: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: spacing.lg, paddingTop: spacing.sm,
+  timerTxt: { fontSize: font.xl, color: colors.onSurface, fontWeight: "700", fontVariant: ["tabular-nums"] },
+  chronoBtns: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  chronoResetBtn: {
+    width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center",
+    backgroundColor: colors.surfaceTertiary,
   },
-  timerTxt: { fontSize: font.base, color: colors.onSurface, fontWeight: "600", fontVariant: ["tabular-nums"] },
-  timerSub: { fontSize: font.sm, color: colors.onSurfaceSecondary, marginTop: 1 },
-  timerCloseBtn: { padding: spacing.xs },
+  chronoPlayBtn: {
+    width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center",
+    backgroundColor: colors.brandPrimary,
+  },
   header: {
     flexDirection: "row", alignItems: "center", gap: spacing.sm,
     padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.divider,

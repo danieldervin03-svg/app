@@ -311,7 +311,7 @@ class Meal(BaseModel):
     fat_g: Optional[float] = None
     fiber_g: Optional[float] = None
     is_favorite: bool = False
-    meal_type: Literal["petit-déjeuner", "déjeuner", "dîner", "collation"]
+    meal_type: Literal["petit-déjeuner", "entrée", "déjeuner", "dîner", "dessert", "collation"]
     date: str  # YYYY-MM-DD
     created_at: str = Field(default_factory=now_utc)
     # Optional quantity basis, so the logged quantity can later be edited and
@@ -331,7 +331,7 @@ class MealCreate(BaseModel):
     carbs_g: Optional[float] = Field(default=None, ge=0, le=900)
     fat_g: Optional[float] = Field(default=None, ge=0, le=400)
     fiber_g: Optional[float] = Field(default=None, ge=0, le=150)
-    meal_type: Literal["petit-déjeuner", "déjeuner", "dîner", "collation"]
+    meal_type: Literal["petit-déjeuner", "entrée", "déjeuner", "dîner", "dessert", "collation"]
     date: Optional[str] = None
     quantity_g: Optional[float] = Field(default=None, ge=0, le=5000)
     calories_per_100g: Optional[float] = Field(default=None, ge=0, le=2000)
@@ -348,13 +348,13 @@ class MealUpdate(BaseModel):
     carbs_g: Optional[float] = Field(default=None, ge=0, le=900)
     fat_g: Optional[float] = Field(default=None, ge=0, le=400)
     fiber_g: Optional[float] = Field(default=None, ge=0, le=150)
-    meal_type: Optional[Literal["petit-déjeuner", "déjeuner", "dîner", "collation"]] = None
+    meal_type: Optional[Literal["petit-déjeuner", "entrée", "déjeuner", "dîner", "dessert", "collation"]] = None
     quantity_g: Optional[float] = Field(default=None, ge=0, le=5000)
 
 
 class MealSuggestInput(BaseModel):
     remaining_calories: int
-    meal_type: Literal["petit-déjeuner", "déjeuner", "dîner", "collation"]
+    meal_type: Literal["petit-déjeuner", "entrée", "déjeuner", "dîner", "dessert", "collation"]
     preferences: str = ""
 
 
@@ -1924,7 +1924,7 @@ async def estimate_meal(body: MealEstimateInput, user: dict = Depends(get_curren
         '"fat_g": number, '
         '"fiber_g": number, '
         '"total_weight_g": int (poids total estimé de l\'ensemble du repas en grammes, somme de tous les composants), '
-        '"meal_type": "petit-déjeuner|déjeuner|dîner|collation", '
+        '"meal_type": "petit-déjeuner|entrée|déjeuner|dîner|dessert|collation", '
         '"breakdown": "string court listant les composants et leur poids estimé, ex: \'150g riz, 120g '
         'poulet, 1c.à.s huile\'"}'
     )
@@ -1933,7 +1933,7 @@ async def estimate_meal(body: MealEstimateInput, user: dict = Depends(get_curren
         max_tokens=1500, model=ANTHROPIC_MODEL_VISION,
     )
     mt = str(data.get("meal_type", "déjeuner")).lower()
-    if mt not in ("petit-déjeuner", "déjeuner", "dîner", "collation"):
+    if mt not in ("petit-déjeuner", "entrée", "déjeuner", "dîner", "dessert", "collation"):
         mt = "déjeuner"
     calories = max(0, int(data.get("calories", 0)))
     protein_g = round(max(0.0, float(data.get("protein_g", 0) or 0)), 1)
@@ -1996,7 +1996,7 @@ async def scan_food(body: MenuScanInput, user: dict = Depends(get_current_user))
         '"carbs_g": number, '
         '"fat_g": number, '
         '"fiber_g": number, '
-        '"meal_type": "petit-déjeuner|déjeuner|dîner|collation", '
+        '"meal_type": "petit-déjeuner|entrée|déjeuner|dîner|dessert|collation", '
         '"breakdown": "string très court expliquant l\'estimation"}\n\n'
         "Si aucun aliment n'est identifiable sur la photo, réponds avec le même schéma mais "
         '"reconnu": false et explique le souci dans "breakdown" (les autres champs à 0 ou vides).'
@@ -2006,7 +2006,7 @@ async def scan_food(body: MenuScanInput, user: dict = Depends(get_current_user))
         image_bytes=image_bytes, image_mime=body.mime_type, max_tokens=1500,
     )
     mt = str(data.get("meal_type", "collation")).lower()
-    if mt not in ("petit-déjeuner", "déjeuner", "dîner", "collation"):
+    if mt not in ("petit-déjeuner", "entrée", "déjeuner", "dîner", "dessert", "collation"):
         mt = "collation"
     return {
         "reconnu": bool(data.get("reconnu", True)),
