@@ -40,7 +40,7 @@ export default function GenerateWorkout() {
   const [discipline, setDiscipline] = useState<"musculation" | "remise_en_forme" | "yoga" | "etirement" | "calisthenics" | "pilates" | "cardio" | "mobilite">("musculation");
   const [programType, setProgramType] = useState<"full_body" | "split" | "upper_lower" | "ppl" | "bro_split" | "force" | "circuit">("full_body");
   const [sessions, setSessions] = useState(3);
-  const [goal, setGoal] = useState(user?.fitness_goal ?? "prise de masse");
+  const [goal, setGoal] = useState<string>(user?.fitness_goal ?? "prise de masse");
   const [level, setLevel] = useState<(typeof LEVELS)[number]>("intermédiaire");
   const [duration, setDuration] = useState(45);
   const [equipment, setEquipment] = useState("salle de sport");
