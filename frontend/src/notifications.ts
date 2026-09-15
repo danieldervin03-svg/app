@@ -5,15 +5,20 @@ import { storage } from "@/src/utils/storage";
 const REMINDER_ID = "daily-reminder-bodypilot";
 const REMINDER_PREF_KEY = "daily-reminder-enabled";
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: false,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
+try {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+} catch {
+  // Notifications are a nice-to-have — never let a failure here crash the app
+  // (e.g. Android push notifications removed from Expo Go as of SDK 53+).
+}
 
 /**
  * Requests notification permission (if needed) and schedules a daily
