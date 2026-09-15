@@ -99,6 +99,9 @@ const FALLBACK_AUTH_STATE: AuthState = {
 
 export function useAuth() {
   const ctx = useContext(AuthCtx);
-  if (!ctx) return FALLBACK_AUTH_STATE;
+  if (!ctx) {
+    console.log("⚠️ useAuth FALLBACK utilisé");
+    return FALLBACK_AUTH_STATE;
+  }
   return ctx;
 }

@@ -22,6 +22,8 @@ function RootGuard() {
   const segments = useSegments();
   const [showSlowHint, setShowSlowHint] = useState(false);
 
+  console.log("RootGuard state:", { loading, user: !!user });
+
   useEffect(() => {
     if (loading) return;
     const first = segments[0];
