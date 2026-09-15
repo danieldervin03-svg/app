@@ -93,3 +93,17 @@ export async function isDailyReminderEnabled(): Promise<boolean> {
   const pref = await storage.getItem<boolean>(REMINDER_PREF_KEY, false);
   return !!pref;
 }
+
+/**
+ * For brand new accounts only: schedules the reminder by default, but ONLY
+ * if the user has never made an explicit choice (on or off) before. Safe to
+ * call on every app start/login — once any explicit preference exists
+ * (set by the Profile toggle), this is a permanent no-op and will never
+ * silently re-enable a reminder the user turned off.
+ */
+export async function autoScheduleReminderIfNeverSet() {
+  const hasPreference = await storage.getItem<boolean | null>(REMINDER_PREF_KEY, null);
+  if (hasPreference === null) {
+    await ensureDailyReminderScheduled();
+  }
+}

@@ -87,7 +87,7 @@ export default function GenerateWorkout() {
           style={StyleSheet.absoluteFill}
         />
         <SafeAreaView style={styles.heroInner}>
-          <Pressable onPress={() => router.back()} style={styles.back} testID="generate-back">
+          <Pressable onPress={() => router.back()} style={styles.back} hitSlop={12} testID="generate-back">
             <Ionicons name="chevron-back" size={22} color={colors.onSurface} />
           </Pressable>
           <View style={{ flex: 1 }} />
@@ -223,8 +223,8 @@ const styles = StyleSheet.create({
   heroInner: { flex: 1, padding: spacing.lg, justifyContent: "flex-end" },
   back: {
     position: "absolute", top: spacing.md, left: spacing.md,
-    width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.9)",
-    alignItems: "center", justifyContent: "center",
+    width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(26,27,30,0.55)",
+    alignItems: "center", justifyContent: "center", zIndex: 10,
   },
   title: { fontSize: font.xxl, color: colors.onSurface, fontWeight: "500" },
   subtitle: { fontSize: font.base, color: colors.onSurfaceSecondary, marginTop: spacing.xs },

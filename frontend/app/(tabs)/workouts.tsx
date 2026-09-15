@@ -70,6 +70,12 @@ function ExerciseCard({ ex }: { ex: MyExercise }) {
   }
 
   const selected = selectedIdx != null ? rawPoints[selectedIdx] : null;
+  const first = rawPoints[0];
+  const last = rawPoints[rawPoints.length - 1];
+  const delta = first && last ? Math.round((last.weight - first.weight) * 10) / 10 : 0;
+
+  const shortDate = (iso: string) =>
+    new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
 
   return (
     <View style={styles.exerciseCard} testID={`my-exercise-${ex.name}`}>
@@ -86,7 +92,20 @@ function ExerciseCard({ ex }: { ex: MyExercise }) {
 
       {series ? (
         <>
-          <Text style={styles.chartHint}>Poids dans le temps · touchez un point pour le détail</Text>
+          <View style={styles.progressSummary}>
+            <Text style={styles.progressSummaryTxt}>
+              {first.weight} kg <Text style={{ color: colors.onSurfaceTertiary }}>→</Text> {last.weight} kg
+            </Text>
+            {delta !== 0 ? (
+              <View style={[styles.progressDeltaPill, { backgroundColor: delta > 0 ? "#0891B222" : "#DC262622" }]}>
+                <Ionicons name={delta > 0 ? "trending-up" : "trending-down"} size={12} color={delta > 0 ? "#0891B2" : "#DC2626"} />
+                <Text style={[styles.progressDeltaTxt, { color: delta > 0 ? "#0891B2" : "#DC2626" }]}>
+                  {delta > 0 ? "+" : ""}{delta} kg
+                </Text>
+              </View>
+            ) : null}
+          </View>
+          <Text style={styles.chartHint}>Touchez un point pour voir le détail</Text>
           <View style={{ marginTop: spacing.xs }}>
             <Svg width="100%" height={CHART_H} viewBox={`0 0 ${CHART_W} ${CHART_H}`}>
               <Line x1={LEFT_AXIS_W} y1={TOP_PAD} x2={LEFT_AXIS_W} y2={TOP_PAD + drawH} stroke={colors.divider} strokeWidth={1} />
@@ -113,6 +132,12 @@ function ExerciseCard({ ex }: { ex: MyExercise }) {
                 );
               })}
             </Svg>
+            {/* Start/end date labels under the axis, so the time span is
+                readable at a glance without needing to tap anything. */}
+            <View style={styles.axisDateRow}>
+              <Text style={styles.axisDateTxt}>{shortDate(first.date)}</Text>
+              <Text style={styles.axisDateTxt}>{shortDate(last.date)}</Text>
+            </View>
             {/* Reps labels as real RN Text overlaid on top — SvgText has shown
                 glyph-rendering glitches (characters overlapping) on some
                 devices, RN's own text layout is far more reliable. */}
@@ -625,7 +650,16 @@ const styles = StyleSheet.create({
   exerciseCardStatsRow: { flexDirection: "row", gap: spacing.md, marginTop: 4 },
   exerciseCardStat: { fontSize: font.sm, color: colors.onSurface },
   exerciseCardNoData: { fontSize: font.sm, color: colors.onSurfaceTertiary, marginTop: spacing.sm, fontStyle: "italic" },
-  chartHint: { fontSize: 11, color: colors.onSurfaceTertiary, marginTop: spacing.sm, fontStyle: "italic" },
+  chartHint: { fontSize: 11, color: colors.onSurfaceTertiary, marginTop: spacing.xs, fontStyle: "italic" },
+  progressSummary: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md },
+  progressSummaryTxt: { fontSize: font.lg, color: colors.onSurface, fontWeight: "700" },
+  progressDeltaPill: {
+    flexDirection: "row", alignItems: "center", gap: 3,
+    paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.pill,
+  },
+  progressDeltaTxt: { fontSize: 11, fontWeight: "700" },
+  axisDateRow: { flexDirection: "row", justifyContent: "space-between", paddingLeft: 32, marginTop: 2 },
+  axisDateTxt: { fontSize: 9, color: colors.onSurfaceTertiary },
   pointRepsLabel: {
     position: "absolute", fontSize: 9, color: colors.onSurfaceSecondary,
     transform: [{ translateX: -18 }], width: 36, textAlign: "center",

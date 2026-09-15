@@ -11,7 +11,7 @@ import { AuthProvider, useAuth } from "@/src/auth";
 import { colors, font, spacing } from "@/src/theme";
 import { AnimatedSplash } from "@/src/components/animated-splash";
 import { UpdateChecker } from "@/src/components/update-banner";
-import { ensureDailyReminderScheduled } from "@/src/notifications";
+import { autoScheduleReminderIfNeverSet } from "@/src/notifications";
 
 LogBox.ignoreAllLogs(true);
 SplashScreen.preventAutoHideAsync();
@@ -34,8 +34,8 @@ function RootGuard() {
   }, [user, loading, segments, router]);
 
   useEffect(() => {
-    if (user) ensureDailyReminderScheduled();
-  }, [user]);
+    if (user?.id) autoScheduleReminderIfNeverSet();
+  }, [user?.id]);
 
   useEffect(() => {
     if (!loading) {
