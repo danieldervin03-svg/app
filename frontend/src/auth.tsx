@@ -82,8 +82,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Neutral fallback returned when useAuth() is evaluated outside the real
+// AuthProvider tree (e.g. Expo Router's SDK 55 static route discovery, which
+// can render/inspect screen modules outside the app's actual component tree).
+// loading stays true and the actions are no-ops so callers relying on the
+// normal "wait for auth" flow keep working instead of crashing.
+const FALLBACK_AUTH_STATE: AuthState = {
+  user: null,
+  loading: true,
+  signIn: async () => {},
+  signUp: async () => {},
+  signOut: async () => {},
+  refresh: async () => {},
+  setUser: () => {},
+};
+
 export function useAuth() {
   const ctx = useContext(AuthCtx);
-  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+  if (!ctx) return FALLBACK_AUTH_STATE;
   return ctx;
 }
