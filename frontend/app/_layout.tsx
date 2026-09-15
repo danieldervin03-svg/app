@@ -82,9 +82,9 @@ export default function RootLayout() {
         <StatusBar style="light" />
         <AuthProvider>
           <RootGuard />
+          <UpdateChecker />
+          {showSplash ? <AnimatedSplash onFinished={() => setShowSplash(false)} /> : null}
         </AuthProvider>
-        <UpdateChecker />
-        {showSplash ? <AnimatedSplash onFinished={() => setShowSplash(false)} /> : null}
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
