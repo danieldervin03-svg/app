@@ -27,54 +27,52 @@ export default function TabsLayout() {
         tabBarLabelStyle: { fontSize: 11 },
       }}
     >
-      <Tabs.Screen
-        name="students"
-        options={{
-          title: "Mes élèves",
-          href: isCoach ? undefined : null,
-          tabBarIcon: ({ color, size }) => <Ionicons name="people-outline" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="messages"
-        options={{
-          title: "Messages",
-          href: isCoach ? undefined : null,
-          tabBarIcon: ({ color, size }) => <Ionicons name="chatbubble-ellipses-outline" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: "Accueil",
-          href: isCoach ? null : undefined,
-          tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="workouts"
-        options={{
-          title: "Entraînements",
-          href: isCoach ? null : undefined,
-          tabBarIcon: ({ color, size }) => <Ionicons name="barbell-outline" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="nutrition"
-        options={{
-          title: "Nutrition",
-          href: isCoach ? null : undefined,
-          tabBarIcon: ({ color, size }) => <Ionicons name="nutrition-outline" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="progress"
-        options={{
-          title: "Progrès",
-          href: isCoach ? null : undefined,
-          tabBarIcon: ({ color, size }) => <Ionicons name="trending-up-outline" size={size} color={color} />,
-        }}
-      />
+      <Tabs.Protected guard={isCoach}>
+        <Tabs.Screen
+          name="students"
+          options={{
+            title: "Mes élèves",
+            tabBarIcon: ({ color, size }) => <Ionicons name="people-outline" size={size} color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="messages"
+          options={{
+            title: "Messages",
+            tabBarIcon: ({ color, size }) => <Ionicons name="chatbubble-ellipses-outline" size={size} color={color} />,
+          }}
+        />
+      </Tabs.Protected>
+      <Tabs.Protected guard={!isCoach}>
+        <Tabs.Screen
+          name="index"
+          options={{
+            title: "Accueil",
+            tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" size={size} color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="workouts"
+          options={{
+            title: "Entraînements",
+            tabBarIcon: ({ color, size }) => <Ionicons name="barbell-outline" size={size} color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="nutrition"
+          options={{
+            title: "Nutrition",
+            tabBarIcon: ({ color, size }) => <Ionicons name="nutrition-outline" size={size} color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="progress"
+          options={{
+            title: "Progrès",
+            tabBarIcon: ({ color, size }) => <Ionicons name="trending-up-outline" size={size} color={color} />,
+          }}
+        />
+      </Tabs.Protected>
       <Tabs.Screen
         name="profile"
         options={{
